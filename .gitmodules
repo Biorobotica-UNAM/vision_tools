@@ -1,0 +1,6 @@
+[submodule "face_recognizer"]
+	path = face_recognizer
+	url = https://github.com/Biorobotica-UNAM/face_recognizer.git
+[submodule "object_recognizer"]
+	path = object_recognizer
+	url = https://github.com/Biorobotica-UNAM/object_recognizer.git
