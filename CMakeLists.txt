@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(vision_tools)
+find_package(ament_cmake REQUIRED)
+#[[
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -11,7 +13,7 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(geometry_msgs REQUIRED)
-find_package(detector_interfaces REQUIRED)
+#find_package(detector_interfaces REQUIRED)
 
 # Librería
 add_library(${PROJECT_NAME}
@@ -48,6 +50,6 @@ ament_export_dependencies(
   rclcpp
   geometry_msgs
   detector_interfaces
-)
+)]]
 
 ament_package()
