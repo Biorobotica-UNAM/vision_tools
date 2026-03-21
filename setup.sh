@@ -14,17 +14,15 @@ echo "Creando estructura de carpetas..."
 mkdir -p "$MODELS_DIR"
 mkdir -p "$FACES_DIR"
 
-echo "Descargando modelos desde OpenCV Zoo..."
+echo "Descargando modelos en $MODELS_DIR..."
 
-# 1. YuNet (Detección de caras - 2023 Mar)
-echo "Descargando YuNet..."
-curl -L -o "$MODELS_DIR/face_detection_yunet_2023mar.onnx" \
-https://raw.githubusercontent.com/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
+# YuNet (face detection)
+curl -L https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx \
+-o "$MODELS_DIR/face_detection_yunet_2023mar.onnx"
 
-# 2. SFace (Reconocimiento de caras - 2021 Dec)
-echo "Descargando SFace..."
-curl -L -o "$MODELS_DIR/face_recognition_sface_2021dec.onnx" \
-https://raw.githubusercontent.com/opencv/opencv_zoo/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx
+# SFace (face recognition)
+curl -L https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx \
+-o "$MODELS_DIR/face_recognition_sface_2021dec.onnx"
 
 echo "--- VERIFICACIÓN ---"
 # Listar los archivos y mostrar su tamaño para confirmar que no son 0 KB
