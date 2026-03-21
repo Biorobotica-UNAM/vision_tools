@@ -60,3 +60,32 @@ std::pair<bool, geometry_msgs::msg::PoseStamped> Vision::detectByClass(
     
     return {true, pose};
 }
+
+bool Vision::DetectPerson(const std::string& name)
+{
+    if (!waitForService(detect_person_client_, std::chrono::seconds(5)))
+        return false;
+
+    auto request =
+        std::make_shared<faces_interfaces::srv::FaceRecog::Request>();
+
+    request->name = name;
+
+    auto future =
+        detect_person_client_->async_send_request(request);
+
+    if (rclcpp::spin_until_future_complete(node_, future)
+        != rclcpp::FutureReturnCode::SUCCESS)
+    {
+        RCLCPP_ERROR(node_->get_logger(), "FaceRecog service call failed");
+        return false;
+    }
+
+    auto res = future.get();
+
+    if (!res->success){
+        RCLCPP_WARN(node_->get_logger(), res->message.c_str());
+        return false;
+    }
+    
+    return true;

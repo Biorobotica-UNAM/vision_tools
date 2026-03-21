@@ -3,7 +3,8 @@
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 //#include <std_srvs/srv/trigger.hpp>
-#include "detector_interfaces/srv/detect_by_class.hpp"
+#include "vision_interfaces/srv/detect_by_class.hpp"
+#include "faces_interfaces/srv/face_recog.hpp"
 
 
 #include <string>
@@ -20,6 +21,8 @@ public:
     std::pair<bool, geometry_msgs::msg::PoseStamped>
         detectByClass(const std::string& class_name, const std::string& model);
 
+    bool DetectPerson(const std::string& name);
+
 private:
 
     bool waitForService(
@@ -30,6 +33,7 @@ private:
     rclcpp::Client<detector_interfaces::srv::DetectByClass>::SharedPtr
         detect_by_class_client_;
 
+    rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr detect_person_client_; 
     rclcpp::Node::SharedPtr node_;
 
 };
