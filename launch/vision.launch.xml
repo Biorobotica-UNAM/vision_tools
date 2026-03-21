@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<launch>
+
+    <arg name="namespace_vision"   default="vision"/>
+    <arg name="model_path"         default="yolo11m.pt"/>
+    <arg name="image_topic"        default="/head_rgbd_sensor/rgb/image_rect_color"/>
+    <arg name="pointcloud_topic"   default="/hardware/camera/points"/>
+
+    <node
+      pkg="yolo_detect"
+      exec="yolo_detect_node"
+      name="yolo_detect_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+        <param name="model_path"   value="$(var model_path)"/>
+        <param name="detect_topic"   value="$(var image_topic)"/>
+    </node>
+
+    <node
+      pkg="seats_detect"
+      exec="seats_detect"
+      name="seats_detect_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+        <param name="pointcloud_topic"   value="$(var pointcloud_topic)"/>
+    </node>
+
+</launch>
