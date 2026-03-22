@@ -5,7 +5,7 @@ Vision::Vision(const rclcpp::Node::SharedPtr& node)
 : node_(node)
 {
     detect_by_class_client_ =
-            node_->create_client<detector_interfaces::srv::DetectByClass>(
+            node_->create_client<vision_interfaces::srv::DetectByClass>(
                 "/detect_by_class");
 }
 
@@ -34,7 +34,7 @@ std::pair<bool, geometry_msgs::msg::PoseStamped> Vision::detectByClass(
         return {false, pose};
 
     auto request =
-        std::make_shared<detector_interfaces::srv::DetectByClass::Request>();
+        std::make_shared<vision_interfaces::srv::DetectByClass::Request>();
 
     request->class_name = class_name;
     request->model = model;

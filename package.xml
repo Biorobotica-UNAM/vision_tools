@@ -2,10 +2,10 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>vision_tools</name>
-  <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="biorobotica.takeshi@ingenieria.unam.edu">pumas</maintainer>
-  <license>TODO: License declaration</license>
+  <version>0.0.1</version>
+  <description>Paquete para detección de asientos libres usando YOLO y TF2</description>
+  <maintainer email="tu@correo.com">Usuario</maintainer>
+  <license>Apache License 2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
@@ -13,7 +13,9 @@
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>geometry_msgs</depend>
-  <depend>detector_interfaces</depend>
+  <depend>sensor_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>vision_interfaces</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

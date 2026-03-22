@@ -4,7 +4,10 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 //#include <std_srvs/srv/trigger.hpp>
 #include "vision_interfaces/srv/detect_by_class.hpp"
+<<<<<<< Updated upstream
 #include "faces_interfaces/srv/face_recog.hpp"
+=======
+>>>>>>> Stashed changes
 
 
 #include <string>
@@ -30,7 +33,7 @@ private:
         const std::chrono::seconds& timeout) const;
 
     // Clients
-    rclcpp::Client<detector_interfaces::srv::DetectByClass>::SharedPtr
+    rclcpp::Client<vision_interfaces::srv::DetectByClass>::SharedPtr
         detect_by_class_client_;
 
     rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr detect_person_client_; 
