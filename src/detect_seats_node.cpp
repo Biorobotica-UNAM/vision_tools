@@ -4,14 +4,17 @@
 #include <limits>
 #include <string>
 #include <chrono>
+#include <map>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_srvs/srv/trigger.hpp"
 #include "vision_interfaces/msg/yolo_detections.hpp"
 #include "vision_interfaces/msg/yolo_detection.hpp"
 #include "vision_interfaces/srv/bbox_to_pose.hpp"
+#include "vision_interfaces/srv/get_detections.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "tf2_ros/transform_broadcaster.h"
+
 
 using std::placeholders::_1;
 using std::placeholders::_2;
@@ -34,11 +37,13 @@ public:
       std::bind(&DetectSeatsNode::yoloCallback, this, _1),
       sub_opt);
 
-    yolo_detection_client_ = this->create_client<std_srvs::srv::Trigger>(
+    yolo_detection_client_ = this->create_client<vision_interfaces::srv::GetDetections>(
       "detection", rmw_qos_profile_services_default, callback_group_);
     
     bbox_to_pose_client_ = this->create_client<vision_interfaces::srv::BboxToPose>(
       "bbox_to_pose", rmw_qos_profile_services_default, callback_group_);
+    
+    
 
     check_service_ = this->create_service<std_srvs::srv::Trigger>(
       "/check_seats",
@@ -49,14 +54,19 @@ public:
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
     tf_timer_ = this->create_wall_timer(
-      100ms,
-      std::bind(&DetectSeatsNode::broadcastTransform, this),
-      callback_group_);
+      100ms, std::bind(&DetectSeatsNode::broadcastTransform, this), callback_group_);
 
     RCLCPP_INFO(get_logger(), "Detect seats node started.");
   }
 
 private:
+
+  struct SeatInfo{
+    geometry_msgs::msg::Point point;
+    std::string frame_id;
+    bool is_occupied;
+  };
+
   void yoloCallback(const vision_interfaces::msg::YoloDetections::SharedPtr msg)
   {
     std::lock_guard<std::mutex> lock(data_mutex_);
@@ -66,10 +76,29 @@ private:
   void broadcastTransform()
   {
     std::lock_guard<std::mutex> lock(data_mutex_);
-    if (!has_free_seat_) return;
+    auto now = this->get_clock()->now();
 
-    free_seat_tf_.header.stamp = this->get_clock()->now();
-    tf_broadcaster_->sendTransform(free_seat_tf_);
+    int free_count = 0;
+    int occ_count = 0;
+
+    for (const auto &seat : detected_seats_) {
+      geometry_msgs::msg::TransformStamped tf;
+      tf.header.stamp = now;
+      tf.header.frame_id = seat.frame_id;
+      
+      if (seat.is_occupied) {
+        tf.child_frame_id = "occ_seat_" + std::to_string(++occ_count);
+      } else {
+        tf.child_frame_id = "free_seat_" + std::to_string(++free_count);
+      }
+
+      tf.transform.translation.x = seat.point.x;
+      tf.transform.translation.y = seat.point.y;
+      tf.transform.translation.z = seat.point.z;
+      tf.transform.rotation.w = 1.0;
+
+      tf_broadcaster_->sendTransform(tf);
+    }
   }
 
   void checkSeatsService(
@@ -85,91 +114,73 @@ private:
       return;
     }
 
-    auto yolo_req = std::make_shared<std_srvs::srv::Trigger::Request>();
+    auto yolo_req = std::make_shared<vision_interfaces::srv::GetDetections::Request>();
     auto yolo_future = yolo_detection_client_->async_send_request(yolo_req);
     
     // En un MultiThreadedExecutor, podemos esperar el future sin bloquear todo el nodo
-    if (yolo_future.wait_for(2s) != std::future_status::ready) {
+    if (yolo_future.wait_for(3s) != std::future_status::ready) {
       res->success = false;
       res->message = "YOLO call timeout";
       return;
     }
 
     // 2. Procesar detecciones
-    vision_interfaces::msg::YoloDetections::SharedPtr current_dets;
-    {
-      std::lock_guard<std::mutex> lock(data_mutex_);
-      current_dets = last_dets_;
-    }
+    auto yolo_res = yolo_future.get();
+      if (!yolo_res->success || yolo_res->detections.empty()) {
+        res->success = false;
+        res->message = "No se detectó nada en la imagen";
+        return;
+      }
 
-    if (!current_dets) {
-      res->success = false;
-      res->message = "No detections available yet";
-      return;
-    }
-
+    std::vector<SeatInfo> new_seats;
+    auto detections = yolo_res->detections;
     std::vector<vision_interfaces::msg::YoloDetection> persons;
     std::vector<vision_interfaces::msg::YoloDetection> seats;
 
-    for (const auto &d : current_dets->detections) {
+    for (const auto &d : detections) {
       if (d.class_name == "person") persons.push_back(d);
       else if (d.class_name == "chair" || d.class_name == "couch") seats.push_back(d);
     }
 
-    double best_dist = std::numeric_limits<double>::infinity();
-    geometry_msgs::msg::Point best_point;
-    bool found_any = false;
+    for (const auto &seat_msg : seats) {
+      SeatInfo info;
+      info.is_occupied = false;
 
-    for (const auto &seat : seats) {
-      bool occupied = false;
+      // Lógica de solapamiento
       for (const auto &p : persons) {
-        if (calculateOverlap(p, seat) > 0.30) {
-          occupied = true;
+        if (calculateOverlap(p, seat_msg) > 0.30) {
+          info.is_occupied = true;
           break;
         }
       }
-      if (occupied) continue;
 
       // 3. Obtener pose 3D del asiento libre
       auto bbox_req = std::make_shared<vision_interfaces::srv::BboxToPose::Request>();
-      bbox_req->x1 = seat.x_min; bbox_req->y1 = seat.y_min;
-      bbox_req->x2 = seat.x_max; bbox_req->y2 = seat.y_max;
+      bbox_req->x1 = seat_msg.x_min; bbox_req->y1 = seat_msg.y_min;
+      bbox_req->x2 = seat_msg.x_max; bbox_req->y2 = seat_msg.y_max;
 
-      if (!bbox_to_pose_client_->wait_for_service(1s)) continue;
-
-      auto bbox_future = bbox_to_pose_client_->async_send_request(bbox_req);
-      if (bbox_future.wait_for(1s) == std::future_status::ready) {
-        auto bbox_res = bbox_future.get();
-        if (bbox_res->success) {
-          auto p = bbox_res->pose.pose.position;
-          double dist = std::sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
-          if (dist < best_dist) {
-            best_dist = dist;
-            best_point = p;
-            found_any = true;
-            // Guardamos el frame_id que viene de la cámara
-            free_seat_tf_.header.frame_id = bbox_res->pose.header.frame_id;
+      if (bbox_to_pose_client_->wait_for_service(1s)) {
+        auto bbox_future = bbox_to_pose_client_->async_send_request(bbox_req);
+        if (bbox_future.wait_for(1s) == std::future_status::ready) {
+          auto bbox_res = bbox_future.get();
+          if (bbox_res->success) {
+            info.point = bbox_res->pose.pose.position;
+            info.frame_id = bbox_res->pose.header.frame_id;
+            new_seats.push_back(info);
           }
         }
       }
     }
 
-    if (found_any) {
+    {
       std::lock_guard<std::mutex> lock(data_mutex_);
-      has_free_seat_ = true;
-      free_seat_tf_.child_frame_id = "free_seat";
-      free_seat_tf_.transform.translation.x = best_point.x;
-      free_seat_tf_.transform.translation.y = best_point.y;
-      free_seat_tf_.transform.translation.z = best_point.z;
-      free_seat_tf_.transform.rotation.w = 1.0;
-
-      res->success = true;
-      res->message = "Seat found at: " + std::to_string(best_point.x);
-    } else {
-      res->success = false;
-      res->message = "No free seats found";
+      detected_seats_ = new_seats;
     }
+
+    res->success = !new_seats.empty();
+    res->message = "Detected " + std::to_string(new_seats.size()) + " seats total.";
   }
+
 
   static double calculateOverlap(const vision_interfaces::msg::YoloDetection& p, const vision_interfaces::msg::YoloDetection& s)
   {
@@ -185,7 +196,7 @@ private:
 
   rclcpp::CallbackGroup::SharedPtr callback_group_;
   rclcpp::Subscription<vision_interfaces::msg::YoloDetections>::SharedPtr yolo_detections_sub_;
-  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr yolo_detection_client_;
+  rclcpp::Client<vision_interfaces::srv::GetDetections>::SharedPtr yolo_detection_client_;
   rclcpp::Client<vision_interfaces::srv::BboxToPose>::SharedPtr bbox_to_pose_client_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr check_service_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
@@ -194,6 +205,7 @@ private:
   vision_interfaces::msg::YoloDetections::SharedPtr last_dets_;
   bool has_free_seat_{false};
   geometry_msgs::msg::TransformStamped free_seat_tf_;
+  std::vector<SeatInfo> detected_seats_;
   std::mutex data_mutex_; // Para proteger el acceso a variables compartidas
 };
 
