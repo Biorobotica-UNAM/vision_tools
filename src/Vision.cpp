@@ -84,8 +84,9 @@ bool Vision::DetectPerson(const std::string& name)
     auto res = future.get();
 
     if (!res->success){
-        RCLCPP_WARN(node_->get_logger(), res->message.c_str());
+        //RCLCPP_WARN(node_->get_logger(), res->message.c_str());
         return false;
     }
     
     return true;
+}
