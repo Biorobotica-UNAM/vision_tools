@@ -13,7 +13,7 @@
       namespace="$(var namespace_vision)"
       output="screen">
         <param name="model_path"   value="$(var model_path)"/>
-        <param name="detect_topic"   value="$(var image_topic)"/>
+        <param name="image_topic"   value="$(var image_topic)"/>
     </node>
 
     <node

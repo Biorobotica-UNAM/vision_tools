@@ -28,6 +28,7 @@ ament_target_dependencies(${PROJECT_NAME}
   rclcpp
   geometry_msgs
   vision_interfaces
+  faces_interfaces
 )
 
 # 3. Nodo Executable
