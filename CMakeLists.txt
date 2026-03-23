@@ -1,16 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
 project(vision_tools)
-<<<<<<< Updated upstream
-
-find_package(ament_cmake REQUIRED)
-
-# Instalar carpeta launch
-install(
-  DIRECTORY launch/
-  DESTINATION share/${PROJECT_NAME}/launch
-)
-
-=======
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -25,6 +14,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(vision_interfaces REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(faces_interfaces REQUIRED)
 
 # 2. Librería
 add_library(${PROJECT_NAME} src/Vision.cpp)
@@ -75,5 +65,4 @@ ament_export_dependencies(
   std_srvs
 )
 
->>>>>>> Stashed changes
 ament_package()

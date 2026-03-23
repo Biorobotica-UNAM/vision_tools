@@ -1,0 +1,11 @@
+# Motor de inferencia
+ultralytics==8.1.0
+transformers
+
+# Procesamiento (Versión mínima recomendada para 3.10)
+numpy>=1.23.5
+
+# Utilidades de visión
+opencv-python-headless  # Evita conflictos con el OpenCV de ROS2
+dataclasses             # Nativo en 3.10, pero bueno tenerlo por compatibilidad
+typing-extensions
