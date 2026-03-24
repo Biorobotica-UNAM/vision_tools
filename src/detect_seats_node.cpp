@@ -159,9 +159,9 @@ private:
       bbox_req->x1 = seat_msg.x_min; bbox_req->y1 = seat_msg.y_min;
       bbox_req->x2 = seat_msg.x_max; bbox_req->y2 = seat_msg.y_max;
 
-      if (bbox_to_pose_client_->wait_for_service(1s)) {
+      if (bbox_to_pose_client_->wait_for_service(3s)) {
         auto bbox_future = bbox_to_pose_client_->async_send_request(bbox_req);
-        if (bbox_future.wait_for(1s) == std::future_status::ready) {
+        if (bbox_future.wait_for(3s) == std::future_status::ready) {
           auto bbox_res = bbox_future.get();
           if (bbox_res->success) {
             info.point = bbox_res->pose.pose.position;

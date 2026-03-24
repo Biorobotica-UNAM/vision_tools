@@ -25,4 +25,13 @@
         <param name="pointcloud_topic"   value="$(var pointcloud_topic)"/>
     </node>
 
+    <node
+      pkg="pc_bbox_pose"
+      exec="pc_bbox_pose_node"
+      name="pc_bbox_pose_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+        <param name="cloud_topic"   value="$(var pointcloud_topic)"/>
+    </node>
+
 </launch>
