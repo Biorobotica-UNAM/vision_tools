@@ -34,4 +34,13 @@
         <param name="cloud_topic"   value="$(var pointcloud_topic)"/>
     </node>
 
+    <node
+      pkg="face_recog"
+      exec="faceFlorence"
+      name="face_recog_nod"
+      namespace="$(var namespace_vision)"
+      output="screen">
+      <param name="image_topic" value="$(var image_topic)"/>
+    </node>
+
 </launch>
