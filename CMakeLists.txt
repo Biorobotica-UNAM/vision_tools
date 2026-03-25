@@ -46,11 +46,20 @@ ament_target_dependencies(detect_seats_node
 # 4. Instalación (Aquí está la solución al error)
 install(TARGETS
   ${PROJECT_NAME}
-  detect_seats_node
+
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS detect_seats_node
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY
+  launch
+  DESTINATION share/${PROJECT_NAME}
 )
 
 install(DIRECTORY include/ DESTINATION include)
