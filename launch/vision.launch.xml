@@ -37,7 +37,7 @@
     <node
       pkg="face_recog"
       exec="faceFlorence"
-      name="face_recog_nod"
+      name="face_recog_node"
       namespace="$(var namespace_vision)"
       output="screen">
       <param name="image_topic" value="$(var image_topic)"/>
