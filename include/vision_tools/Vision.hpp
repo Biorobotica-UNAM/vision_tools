@@ -22,8 +22,13 @@ public:
         detectByClass(const std::string& class_name, const std::string& model);
 
     bool DetectPerson(const std::string& name);
+    bool IdentifyPerson(const std::string& name);
+    bool DescribePerson(const std::string& name);
+    bool RegisterPerson(const std::string& name);
 
 private:
+
+    rclcpp::Node::SharedPtr node_;
 
     bool waitForService(
         const rclcpp::ClientBase::SharedPtr& client,
@@ -32,8 +37,13 @@ private:
     // Clients
     rclcpp::Client<vision_interfaces::srv::DetectByClass>::SharedPtr
         detect_by_class_client_;
+    
+    rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr detect_face_client_;
+    rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr identify_face_client_;
+    rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr describe_face_client_;
+    rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr register_face_client_;
 
-    rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr detect_person_client_; 
-    rclcpp::Node::SharedPtr node_;
+    //rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr detect_person_client_; 
+    //rclcpp::Node::SharedPtr node_;
 
 };

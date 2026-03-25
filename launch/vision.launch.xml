@@ -17,12 +17,30 @@
     </node>
 
     <node
-      pkg="seats_detect"
-      exec="seats_detect"
-      name="seats_detect_node"
+      pkg="vision_tools"
+      exec="detect_seats_node"
+      name="detect_seats_node"
       namespace="$(var namespace_vision)"
       output="screen">
         <param name="pointcloud_topic"   value="$(var pointcloud_topic)"/>
+    </node>
+
+    <node
+      pkg="pc_bbox_pose"
+      exec="pc_bbox_pose_node"
+      name="pc_bbox_pose_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+        <param name="cloud_topic"   value="$(var pointcloud_topic)"/>
+    </node>
+
+    <node
+      pkg="face_recog"
+      exec="faceFlorence"
+      name="face_recog_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+      <param name="image_topic" value="$(var image_topic)"/>
     </node>
 
 </launch>

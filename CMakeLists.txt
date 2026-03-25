@@ -52,6 +52,10 @@ install(TARGETS
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
+install(DIRECTORY
+  launch
+  DESTINATION share/${PROJECT_NAME}
+)
 
 install(TARGETS detect_seats_node
   RUNTIME DESTINATION lib/${PROJECT_NAME}
