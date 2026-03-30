@@ -105,16 +105,6 @@ private:
       return;
     }
 
-    auto yolo_req = std::make_shared<vision_interfaces::srv::GetDetections::Request>();
-    auto yolo_future = yolo_detection_client_->async_send_request(yolo_req);
-    
-    // En un MultiThreadedExecutor, podemos esperar el future sin bloquear todo el nodo
-    if (yolo_future.wait_for(3s) != std::future_status::ready) {
-      res->success = false;
-      res->message = "YOLO call timeout";
-      return;
-    }
-
     // =====================================
     // 1. Get detections from YOLO
     // =====================================

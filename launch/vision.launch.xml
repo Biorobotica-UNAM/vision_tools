@@ -16,13 +16,23 @@
         <param name="image_topic"   value="$(var image_topic)"/>
     </node>
 
+
+
     <node
       pkg="vision_tools"
       exec="detect_seats_node"
       name="detect_seats_node"
       namespace="$(var namespace_vision)"
       output="screen">
-        <param name="pointcloud_topic"   value="$(var pointcloud_topic)"/>
+    </node>
+
+
+    <node
+      pkg="vision_tools"
+      exec="detect_objects_node"
+      name="detect_objects_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
     </node>
 
     <node

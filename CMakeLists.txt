@@ -33,8 +33,18 @@ ament_target_dependencies(${PROJECT_NAME}
 
 # 3. Nodo Executable
 add_executable(detect_seats_node src/detect_seats_node.cpp)
+add_executable(detect_objects_node src/detect_objects_node.cpp)
 
 ament_target_dependencies(detect_seats_node
+  rclcpp
+  std_srvs
+  sensor_msgs
+  vision_interfaces
+  tf2_ros
+  geometry_msgs
+)
+
+ament_target_dependencies(detect_objects_node
   rclcpp
   std_srvs
   sensor_msgs
@@ -58,6 +68,10 @@ install(DIRECTORY
 )
 
 install(TARGETS detect_seats_node
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS detect_objects_node
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
