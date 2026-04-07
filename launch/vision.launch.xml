@@ -16,8 +16,6 @@
         <param name="image_topic"   value="$(var image_topic)"/>
     </node>
 
-
-
     <node
       pkg="vision_tools"
       exec="detect_seats_node"
