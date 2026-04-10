@@ -80,6 +80,43 @@ private:
     vision_interfaces::msg::YoloDetection det;
   };
 
+  const std::unordered_map<std::string, std::vector<std::string>> CATEGORY_MAP = {
+    {"cuttlery",  {"spoon", "fork", "knife"}},
+    {"tableware", {"mug", "cup", "plate"}},
+    {"trash",     {"trash_can", "crumpled_paper"}}, // Ajusta según tus nombres de YOLO
+    {"other",     {}} // Caso especial
+  };
+
+  bool isClassInCategory(const std::string& detected_class, const std::string& requested_category) {
+      // 1. Limpieza básica y log de depuración (útil para ver por qué falla)
+      // Puedes comentar estos logs después, pero ayudan a ver si llega "spoon " o "Spoon"
+      RCLCPP_DEBUG(this->get_logger(), "Comparando detectado: '%s' con pedido: '%s'", 
+                  detected_class.c_str(), requested_category.c_str());
+
+      // 2. Coincidencia exacta
+      if (detected_class == requested_category) return true;
+
+      // 3. Buscar en el mapa de categorías
+      auto it = CATEGORY_MAP.find(requested_category);
+      if (it != CATEGORY_MAP.end()) {
+          for (const auto& member : it->second) {
+              if (member == detected_class) return true;
+          }
+      }
+
+      // 4. Lógica de "other"
+      if (requested_category == "other") {
+          for (const auto& pair : CATEGORY_MAP) {
+              if (pair.first == "other") continue;
+              for (const auto& member : pair.second) {
+                  if (member == detected_class) return false;
+              }
+          }
+          return true; // No está en ninguna categoría conocida, así que es "other"
+      }
+
+      return false;
+  }
   void findObjectService(
     const std::shared_ptr<vision_interfaces::srv::FindObject::Request> req,
     std::shared_ptr<vision_interfaces::srv::FindObject::Response> res)
@@ -121,9 +158,9 @@ private:
     std::vector<vision_interfaces::msg::YoloDetection> candidates_2d;
 
     for (const auto & d : yolo_res->detections) {
-      if (d.class_name != req->class_name) {
-        continue;
-      }
+      if (!isClassInCategory(d.class_name, req->class_name)) {
+          continue;
+        }
 
       if (d.confidence < min_confidence_) {
         continue;
