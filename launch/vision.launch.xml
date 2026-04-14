@@ -53,7 +53,7 @@
 
     <node
       pkg="owlv2_detect"
-      exec="owlv2_detect_node"
+      exec="owlv2_node"
       name="owlv2_detect_node"
       namespace="$(var namespace_vision)"
       output="screen">
