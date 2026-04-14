@@ -52,6 +52,14 @@
     </node>
 
     <node
+      pkg="table_alignment"
+      exec="table_segmenter_node"
+      name="table_segmenter_node"
+      output="screen">
+        <param name="tolerance" value="5.0"/>
+    </node>
+
+    <node
       pkg="owlv2_detect"
       exec="owlv2_node"
       name="owlv2_detect_node"
