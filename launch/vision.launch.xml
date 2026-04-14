@@ -61,4 +61,14 @@
       <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
     </node>
 
+    <node
+      pkg="human_detection"
+      exec="wave_detector"
+      name="wave_detector_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+        <param name="image_topic"   value="$(var image_topic)"/>
+        <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
+    </node>
+
 </launch>
