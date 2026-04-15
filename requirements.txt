@@ -1,14 +1,18 @@
 # --- Librerías de Inferencia y Visión ---
 # Forzamos la rama 8.3+ para evitar el error de 'C3k2'
-ultralytics>=8.4.24
-ultralytics-thop==2.0.18
+ultralytics>=8.3.24
+ultralytics-thop>=2.0.0
 
 #--- transfortmers ---
-transformers==4.50.3
+transformers>=4.45.0
+pillow>=9.0.0
+timm>=0.9.0
+accelerate>=0.26.0
 
 # --- Core y Backend ---
-ultralytics>=8.4.24
-numpy<2.0.0
+ros2-numpy
+numpy>=1.22.0,<2.0.0
+scipy>=1.8.0
 opencv-python-headless>=4.9.0.80,<4.10.0
 
 # --- PyTorch GPU ---
@@ -16,3 +20,5 @@ torch==2.5.1+cu121
 torchvision==0.20.1+cu121
 torchaudio==2.5.1+cu121
 
+opencv-python>=4.8.0
+opencv-contrib-python>=4.8.0
