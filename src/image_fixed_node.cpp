@@ -26,8 +26,8 @@ private:
     void image_callback(const sensor_msgs::msg::Image::SharedPtr msg) {
         try {
             // Conversión directa para evitar copias innecesarias
-            cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvShare(msg, "bgr8");
-            cv::Mat frame = cv_ptr->image.clone(); // Clonamos solo para modificar
+            cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvCopy(msg, "bgr8");
+            cv::Mat frame = cv_ptr->image; // Clonamos solo para modificar
             cv::Mat working_mat;
 
             // 1. Balance de Blancos (Gray World Rápido)
