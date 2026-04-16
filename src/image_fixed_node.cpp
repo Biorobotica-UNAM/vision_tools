@@ -2,14 +2,14 @@
 #include <vector>
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
-#include "cv_bridge/cv_bridge.hpp"
+#include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
 
 class ImageEnhancer : public rclcpp::Node {
 public:
     ImageEnhancer() : Node("hsr_image_enhancer") {
         // Tópico estándar de la cámara del HSR
-        std::string input_topic = "/hsrb/head_rgbd_sensor/rgb/image_raw";
+        std::string input_topic = "/head_rgbd_sensor/rgb/image_rect_color";
         
         image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
             input_topic, 
@@ -17,7 +17,7 @@ public:
             std::bind(&ImageEnhancer::image_callback, this, std::placeholders::_1));
 
         image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(
-            "/hsrb/head_rgbd_sensor/rgb/image_enhanced", 10);
+            "/hardware/camera/image_raw", 10);
         
         RCLCPP_INFO(this->get_logger(), "HSR Enhancer listo. Escuchando en: %s", input_topic.c_str());
     }
