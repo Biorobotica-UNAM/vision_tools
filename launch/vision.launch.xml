@@ -71,4 +71,12 @@
         <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
     </node>
 
+    <node
+      pkg="vision_tools"
+      exec="image_fixed_node"
+      name="image_fixed_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+    </node>
+
 </launch>
