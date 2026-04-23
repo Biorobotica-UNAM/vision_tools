@@ -26,7 +26,7 @@ public:
     timeout_ = std::chrono::duration<double>(get_parameter("timeout_sec").as_double());
 
     detector_services_ = {
-      {"YOLO", "/yolo/get_bbox"},
+      {"YOLO", "/get_bbox"},
       {"OWL",  "/owl/Owlv2Service"},
       //{"DINO", "/dino/get_bbox"}
     };
