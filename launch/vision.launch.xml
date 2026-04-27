@@ -3,7 +3,7 @@
 
     <arg name="namespace_vision"   default="vision"/>
     <arg name="model_path"         default="yolo11m.pt"/>
-    <arg name="image_topic"        default="/head_rgbd_sensor/rgb/image_rect_color"/>
+    <arg name="image_topic"        default="/hardware/camera/image_raw"/>
     <arg name="pointcloud_topic"   default="/hardware/camera/points"/>
 
     <node
@@ -51,4 +51,32 @@
       <param name="image_topic" value="$(var image_topic)"/>
     </node>
 
+    <node
+      pkg="owlv2_detect"
+      exec="owlv2_node"
+      name="owlv2_detect_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+      <param name="image_topic" value="$(var image_topic)"/>
+      <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
+    </node>
+
+    <node
+      pkg="human_detection"
+      exec="wave_detector"
+      name="wave_detector_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+        <param name="image_topic"   value="$(var image_topic)"/>
+        <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
+    </node>
+<!--
+    <node
+      pkg="vision_tools"
+      exec="image_fixed_node"
+      name="image_fixed_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+    </node>
+-->
 </launch>
