@@ -24,15 +24,6 @@
       output="screen">
     </node>
 
-
-    <node
-      pkg="vision_tools"
-      exec="detect_objects_node"
-      name="detect_objects_node"
-      namespace="$(var namespace_vision)"
-      output="screen">
-    </node>
-
     <node
       pkg="pc_bbox_pose"
       exec="pc_bbox_pose_node"
