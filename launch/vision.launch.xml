@@ -3,8 +3,8 @@
 
     <arg name="namespace_vision"   default="vision"/>
     <arg name="model_path"         default="yolo11m.pt"/>
-    <arg name="image_topic"        default="/hardware/camera/image_raw"/>
-    <arg name="pointcloud_topic"   default="/hardware/camera/points"/>
+    <arg name="image_topic"        default="/kinect/image_raw"/>
+    <arg name="pointcloud_topic"   default="/kinect/points"/>
 
     <node
       pkg="yolo_detect"
@@ -20,6 +20,14 @@
       pkg="vision_tools"
       exec="detect_seats_node"
       name="detect_seats_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+    </node>
+
+    <node
+      pkg="vision_tools"
+      exec="Detect_Fusion_Node"
+      name="detect_fusion_node"
       namespace="$(var namespace_vision)"
       output="screen">
     </node>
@@ -50,6 +58,14 @@
       output="screen">
       <param name="image_topic" value="$(var image_topic)"/>
       <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
+    </node>
+
+    <node
+      pkg="owlv2_detect"
+      exec="Analize_node"
+      name="Analize_cat_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
     </node>
 
     <node
