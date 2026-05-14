@@ -5,7 +5,6 @@
 #include <unordered_map>
 
 #include "rclcpp/rclcpp.hpp"
-// Interfaces estándar para todos los modelos de visión
 #include "vision_interfaces/srv/get_detections.hpp" 
 #include "vision_interfaces/srv/bbox_to_pose.hpp"
 #include "vision_interfaces/srv/detect_by_class.hpp"
@@ -22,18 +21,16 @@ public:
     declare_parameter<double>("timeout_sec", 5.0);
     timeout_ = std::chrono::duration<double>(get_parameter("timeout_sec").as_double());
 
-    // Ahora ambos usan el mismo tipo de servicio: GetDetections
     detector_services_ = {
-      {"YOLO", "/yolo/get_detections"},
-      {"OWL",  "/owl/get_detections"} 
+      {"YOLO", "detection"},
+      {"OWL",  "owl/owlv2_service"} 
     };
 
-    pc_srv_name_ = "/bbox_to_pose";
+    pc_srv_name_ = "bbox_to_pose";
 
     cbg_srv_     = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     cbg_clients_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
 
-    // Inicialización dinámica de clientes
     for (const auto& [model, service_name] : detector_services_){
       detectors_[model] = this->create_client<GetDetections>(service_name, rclcpp::ServicesQoS(), cbg_clients_);
       RCLCPP_INFO(get_logger(), "Cliente listo para %s en: %s", model.c_str(), service_name.c_str());
@@ -68,7 +65,6 @@ private:
       return;
     }
 
-    // 1. Llamada al detector (Estandarizado)
     auto dreq = std::make_shared<GetDetections::Request>();
     dreq->queries.push_back(req->class_name); // 
 
@@ -84,12 +80,10 @@ private:
       return;
     }
 
-    // 2. Procesar la mejor detección (YoloDetection.msg) [cite: 3]
-    // Tomamos la primera de la lista 
+    //Procesar la mejor detección (YoloDetection.msg) [cite: 3]
     auto &top_det = dres->detections[0]; 
 
     auto preq = std::make_shared<BboxToPose::Request>();
-    // Asignamos coordenadas de la detección al servicio de Pose 
     preq->x1 = static_cast<int32_t>(top_det.x_min);
     preq->y1 = static_cast<int32_t>(top_det.y_min);
     preq->x2 = static_cast<int32_t>(top_det.x_max);
@@ -97,7 +91,7 @@ private:
     preq->header.stamp = this->get_clock()->now();
     preq->header.frame_id = "camera_color_optical_frame"; 
 
-    // 3. Obtener Pose 3D
+    //Pose 3D
     auto p_future = pc_client_->async_send_request(preq);
     if (p_future.wait_for(timeout_) != std::future_status::ready) {
       res->message = "Timeout en BboxToPose";
@@ -110,7 +104,7 @@ private:
       return;
     }
 
-    res->pose = pres->pose; // [cite: 1]
+    res->pose = pres->pose; 
     res->success = true;
     res->message = "Éxito con " + req->model;
   }
