@@ -17,6 +17,7 @@
   <depend>tf2_ros</depend>
   <depend>vision_interfaces</depend>
   <depend>faces_interfaces</depend>
+  <depend>human_interfaces</depend>
   <depend>cv_bridge</depend>
   <depend>opencv</depend>
 
