@@ -3,8 +3,8 @@
 
     <arg name="namespace_vision"   default="vision"/>
     <arg name="model_path"         default="yolo11m.pt"/>
-    <arg name="image_topic"        default="/kinect/image_raw"/>
-    <arg name="pointcloud_topic"   default="/kinect/points"/>
+    <arg name="image_topic"        default="/hardware/camera/image_raw"/>
+    <arg name="pointcloud_topic"   default="/hardware/camera/points"/>
 
     <node
       pkg="yolo_detect"
