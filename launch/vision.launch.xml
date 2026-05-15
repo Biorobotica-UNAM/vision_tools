@@ -77,6 +77,15 @@
         <param name="image_topic"   value="$(var image_topic)"/>
         <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
     </node>
+
+    <node
+      pkg="table_alignment"
+      exec="table_segmenter_node"
+      name="table_segmenter_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+        <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
+    </node>
 <!--
     <node
       pkg="vision_tools"
