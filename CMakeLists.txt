@@ -15,8 +15,10 @@ find_package(sensor_msgs REQUIRED)
 find_package(vision_interfaces REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(faces_interfaces REQUIRED)
+find_package(human_interfaces REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
+
 
 # 2. Librería
 add_library(${PROJECT_NAME} src/Vision.cpp)
@@ -33,6 +35,8 @@ ament_target_dependencies(${PROJECT_NAME}
   vision_interfaces
   faces_interfaces
   sensor_msgs
+  std_srvs
+  human_interfaces
   cv_bridge
 )
 
@@ -108,6 +112,8 @@ ament_export_dependencies(
   sensor_msgs
   tf2_ros
   std_srvs
+  faces_interfaces
+  human_interfaces
   cv_bridge
   OpenCV
 )
