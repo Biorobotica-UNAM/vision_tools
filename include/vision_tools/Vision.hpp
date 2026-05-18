@@ -43,6 +43,7 @@
 #include "vision_interfaces/srv/detect_by_class.hpp"
 #include "vision_interfaces/srv/find_seat.hpp"
 #include "vision_interfaces/srv/get_detections.hpp"
+#include "vision_interfaces/srv/bbox_to_pose.hpp"
 
 using namespace std::chrono_literals;
 
@@ -97,6 +98,11 @@ public:
   // Focus
   bool Focus(bool enable, std::chrono::seconds timeout = 5s);
 
+  bool DetectionToPose(
+    const vision_interfaces::msg::YoloDetection& detection,
+    geometry_msgs::msg::PoseStamped& pose,
+    std::chrono::seconds timeout = 5s);
+
 private:
   rclcpp::Node::SharedPtr node_;
   rclcpp::CallbackGroup::SharedPtr cb_group_clients_;
@@ -122,12 +128,13 @@ private:
       register_face_client_;
   rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr
       focus_client_;
+  rclcpp::Client<vision_interfaces::srv::BboxToPose>::SharedPtr
+	  bbox_to_pose_client_;
   // Topic subscription — table alignment
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr
       sub_table_alignment_;
   std::shared_ptr<std::promise<double>> alignment_promise_;
   std::mutex promise_mutex_;
-
 
   template <typename ServiceT, typename CallbackT>
   bool call_service(typename rclcpp::Client<ServiceT>::SharedPtr &client,
