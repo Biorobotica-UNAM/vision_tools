@@ -60,6 +60,10 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node) {
       node_->create_client<faces_interfaces::srv::FaceRecog>(
           "/vision/register_person", qos, cb_group_clients_);
 
+  focus_client_ =
+        node_->create_client<std_srvs::srv::SetBool>(
+            "/vision/focus", qos, cb_group_clients_);
+
   // Table alignment topic
   sub_table_alignment_ = node_->create_subscription<std_msgs::msg::Float64>(
       "camera/table_alignment", 10,
@@ -321,4 +325,22 @@ double Vision::GetTableAlignment(std::chrono::seconds timeout) {
               "Timeout waiting for table alignment topic after %ld s.",
               timeout.count());
   return 0.0;
+}
+
+// ============================================================
+// Focus 
+// ============================================================
+
+bool Vision::Focus(bool enable, std::chrono::seconds timeout) {
+    auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
+    request->data = enable;
+
+    bool completed = call_service<std_srvs::srv::SetBool>(
+        focus_client_, request,
+        [&](auto response) {
+          RCLCPP_INFO(node_->get_logger(), "Focus %s: %s",
+                      enable ? "ON" : "OFF", response->success ? "OK" : "FAILED");
+        },
+        timeout, "Focus");
+    return completed;
 }

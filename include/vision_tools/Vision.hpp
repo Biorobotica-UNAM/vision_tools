@@ -94,6 +94,9 @@ public:
   // Table alignment
   double GetTableAlignment(std::chrono::seconds timeout = 1s);
 
+  // Focus
+  bool Focus(bool enable, std::chrono::seconds timeout = 5s);
+
 private:
   rclcpp::Node::SharedPtr node_;
   rclcpp::CallbackGroup::SharedPtr cb_group_clients_;
@@ -117,7 +120,8 @@ private:
       describe_face_client_;
   rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr
       register_face_client_;
-
+  rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr
+      focus_client_;
   // Topic subscription — table alignment
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr
       sub_table_alignment_;
