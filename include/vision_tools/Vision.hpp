@@ -28,7 +28,6 @@
 #include <chrono>
 #include <future>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <utility>
 
@@ -43,6 +42,7 @@
 #include "vision_interfaces/srv/detect_by_class.hpp"
 #include "vision_interfaces/srv/find_seat.hpp"
 #include "vision_interfaces/srv/get_detections.hpp"
+#include "vision_interfaces/srv/get_table_alignment.hpp"
 
 using namespace std::chrono_literals;
 
@@ -117,12 +117,8 @@ private:
       describe_face_client_;
   rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr
       register_face_client_;
-
-  // Topic subscription — table alignment
-  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr
-      sub_table_alignment_;
-  std::shared_ptr<std::promise<double>> alignment_promise_;
-  std::mutex promise_mutex_;
+    rclcpp::Client<vision_interfaces::srv::GetTableAlignment>::SharedPtr
+      get_table_alignment_client_;
 
 
   template <typename ServiceT, typename CallbackT>

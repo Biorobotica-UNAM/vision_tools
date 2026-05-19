@@ -60,16 +60,9 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node) {
       node_->create_client<faces_interfaces::srv::FaceRecog>(
           "/vision/register_person", qos, cb_group_clients_);
 
-  // Table alignment topic
-  sub_table_alignment_ = node_->create_subscription<std_msgs::msg::Float64>(
-      "camera/table_alignment", 10,
-      [this](const std_msgs::msg::Float64::SharedPtr msg) {
-        std::lock_guard<std::mutex> lock(promise_mutex_);
-        if (alignment_promise_) {
-          alignment_promise_->set_value(msg->data);
-          alignment_promise_ = nullptr; // fulfill only once per request
-        }
-      });
+  get_table_alignment_client_ =
+      node_->create_client<vision_interfaces::srv::GetTableAlignment>(
+          "/vision/get_table_alignment", qos, cb_group_clients_);
 }
 
 // ============================================================
@@ -301,24 +294,30 @@ Vision::DetectPointing(std::chrono::seconds timeout) {
 }
 
 // ============================================================
-// GetTableAlignment  (topic-based — promise pattern, not a service)
+// GetTableAlignment (service-based)
 // ============================================================
 
 double Vision::GetTableAlignment(std::chrono::seconds timeout) {
-  auto prom = std::make_shared<std::promise<double>>();
-  auto fut = prom->get_future();
+  auto request =
+      std::make_shared<vision_interfaces::srv::GetTableAlignment::Request>();
 
-  {
-    std::lock_guard<std::mutex> lock(promise_mutex_);
-    alignment_promise_ = prom;
+  double angle = 0.0;
+  bool success = false;
+
+  bool completed = call_service<vision_interfaces::srv::GetTableAlignment>(
+      get_table_alignment_client_, request,
+      [&](auto response) {
+        success = response->success;
+        angle = response->angle;
+        RCLCPP_INFO(node_->get_logger(), "GetTableAlignment %s: %s (angle=%.3f)",
+                    success ? "OK" : "FAILED", response->message.c_str(),
+                    angle);
+      },
+      timeout, "GetTableAlignment");
+
+  if (!completed || !success) {
+    return 0.0;
   }
 
-  if (fut.wait_for(timeout) == std::future_status::ready) {
-    return fut.get();
-  }
-
-  RCLCPP_WARN(node_->get_logger(),
-              "Timeout waiting for table alignment topic after %ld s.",
-              timeout.count());
-  return 0.0;
+  return angle;
 }
