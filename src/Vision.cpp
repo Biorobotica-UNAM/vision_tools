@@ -34,8 +34,7 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node) {
 
   owl_v2_client_ =
       node_->create_client<vision_interfaces::srv::GetDetections>(
-          "/vision/owl/owlv2_service", rmw_qos_profile_services_default,
-          cb_group_clients_);
+          "/vision/owl/owlv2_service", qos, cb_group_clients_);
   find_seat_client_ =
       node_->create_client<vision_interfaces::srv::FindSeat>(
           "/vision/find_seat", qos, cb_group_clients_);
@@ -44,9 +43,7 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node) {
           "/vision/enable_continuous", qos, cb_group_clients_);
   detect_pointing_client_ =
       node_->create_client<human_interfaces::srv::DetectPointing>(
-          "/human_detection/detect_wrist", rmw_qos_profile_services_default,
-          cb_group_clients_);
-
+          "/human_detection/detect_wrist", qos,cb_group_clients_);
   detect_face_client_ =
       node_->create_client<faces_interfaces::srv::FaceRecog>(
           "/vision/detect_person", qos, cb_group_clients_);
@@ -63,12 +60,6 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node) {
   focus_client_ =
         node_->create_client<std_srvs::srv::SetBool>(
             "/vision/focus", qos, cb_group_clients_);
-
-  bbox_to_pose_client_ =
-    node_->create_client<vision_interfaces::srv::BboxToPose>(
-        "/vision/bbox_to_pose",
-        qos,
-        cb_group_clients_);
 
   // Table alignment topic
   sub_table_alignment_ = node_->create_subscription<std_msgs::msg::Float64>(
@@ -349,42 +340,4 @@ bool Vision::Focus(bool enable, std::chrono::seconds timeout) {
         },
         timeout, "Focus");
     return completed;
-}
-
-// ============================================================
-// Detection to pose
-// ============================================================
-
-bool Vision::DetectionToPose(
-    const vision_interfaces::msg::YoloDetection& detection,
-    geometry_msgs::msg::PoseStamped& pose,
-    std::chrono::seconds timeout)
-{
-    auto request =
-        std::make_shared<vision_interfaces::srv::BboxToPose::Request>();
-
-    request->header = detection.header;
-
-    request->x1 = detection.x_min;
-    request->y1 = detection.y_min;
-    request->x2 = detection.x_max;
-    request->y2 = detection.y_max;
-
-    bool success = false;
-
-    bool completed =
-        call_service<vision_interfaces::srv::BboxToPose>(
-            bbox_to_pose_client_,
-            request,
-            [&](auto response)
-            {
-                success = response->success;
-
-                if (success)
-                    pose = response->pose;
-            },
-            timeout,
-            "BboxToPose");
-
-    return completed && success;
 }
