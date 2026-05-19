@@ -15,6 +15,8 @@
 
 #include "vision_tools/Vision.hpp"
 #include <vector>
+#include <algorithm>
+#include "tf2/exceptions.h"
 
 using namespace std::chrono_literals;
 
@@ -34,8 +36,7 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node) {
 
   owl_v2_client_ =
       node_->create_client<vision_interfaces::srv::GetDetections>(
-          "/vision/owl/owlv2_service", rmw_qos_profile_services_default,
-          cb_group_clients_);
+          "/vision/owl/owlv2_service", qos, cb_group_clients_);
   find_seat_client_ =
       node_->create_client<vision_interfaces::srv::FindSeat>(
           "/vision/find_seat", qos, cb_group_clients_);
@@ -44,9 +45,7 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node) {
           "/vision/enable_continuous", qos, cb_group_clients_);
   detect_pointing_client_ =
       node_->create_client<human_interfaces::srv::DetectPointing>(
-          "/human_detection/detect_wrist", rmw_qos_profile_services_default,
-          cb_group_clients_);
-
+          "/human_detection/detect_wrist", qos,cb_group_clients_);
   detect_face_client_ =
       node_->create_client<faces_interfaces::srv::FaceRecog>(
           "/vision/detect_person", qos, cb_group_clients_);
@@ -63,6 +62,16 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node) {
   get_table_alignment_client_ =
       node_->create_client<vision_interfaces::srv::GetTableAlignment>(
           "/vision/get_table_alignment", qos, cb_group_clients_);
+  focus_client_ =
+        node_->create_client<std_srvs::srv::SetBool>(
+            "/vision/focus", qos, cb_group_clients_);
+  tf_buffer_ =
+    std::make_shared<tf2_ros::Buffer>(
+        node_->get_clock());
+
+  tf_listener_ =
+    std::make_shared<tf2_ros::TransformListener>(
+        *tf_buffer_);
 }
 
 // ============================================================
@@ -320,4 +329,101 @@ double Vision::GetTableAlignment(std::chrono::seconds timeout) {
   }
 
   return angle;
+}
+
+// ============================================================
+// Focus 
+// ============================================================
+
+bool Vision::Focus(bool enable, std::chrono::seconds timeout) {
+    auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
+    request->data = enable;
+
+    bool completed = call_service<std_srvs::srv::SetBool>(
+        focus_client_, request,
+        [&](auto response) {
+          RCLCPP_INFO(node_->get_logger(), "Focus %s: %s",
+                      enable ? "ON" : "OFF", response->success ? "OK" : "FAILED");
+        },
+        timeout, "Focus");
+    return completed;
+}
+
+
+// ============================================================
+// Focus 
+// ============================================================
+bool Vision::FindObjectTF(
+    const std::string& query,
+    geometry_msgs::msg::PoseStamped& pose,
+    std::chrono::seconds timeout)
+{
+    auto result =
+        DetectOwlV2({query}, timeout);
+
+    if (!result.first)
+        return false;
+
+    if (result.second.empty())
+        return false;
+
+    auto detection =
+        result.second[0];
+
+    std::string label =
+        detection.class_name;
+
+    std::replace(
+        label.begin(),
+        label.end(),
+        ' ',
+        '_');
+
+    try
+    {
+        auto tf =
+            tf_buffer_->lookupTransform(
+                "base_link",
+                "OWL_" + label + "_0",
+                tf2::TimePointZero,
+                200ms);
+
+        pose.header =
+            tf.header;
+
+        pose.header.frame_id =
+            "base_link";
+
+        pose.pose.position.x =
+            tf.transform.translation.x;
+
+        pose.pose.position.y =
+            tf.transform.translation.y;
+
+        pose.pose.position.z =
+            tf.transform.translation.z;
+
+        pose.pose.orientation =
+            tf.transform.rotation;
+
+        RCLCPP_INFO(
+            node_->get_logger(),
+            "Found [%s] at [%.2f %.2f %.2f]",
+            label.c_str(),
+            pose.pose.position.x,
+            pose.pose.position.y,
+            pose.pose.position.z);
+
+        return true;
+    }
+    catch (const tf2::TransformException& ex)
+    {
+        RCLCPP_WARN(
+            node_->get_logger(),
+            "TF lookup failed for [%s]: %s",
+            label.c_str(),
+            ex.what());
+
+        return false;
+    }
 }
