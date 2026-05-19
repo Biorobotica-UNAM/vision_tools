@@ -43,6 +43,8 @@
 #include "vision_interfaces/srv/detect_by_class.hpp"
 #include "vision_interfaces/srv/find_seat.hpp"
 #include "vision_interfaces/srv/get_detections.hpp"
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/transform_listener.h"
 
 using namespace std::chrono_literals;
 
@@ -97,6 +99,12 @@ public:
   // Focus
   bool Focus(bool enable, std::chrono::seconds timeout = 5s);
 
+  // Find Object TF
+  bool FindObjectTF(
+    const std::string& query,
+    geometry_msgs::msg::PoseStamped& pose,
+    std::chrono::seconds timeout = 5s);
+
 private:
   rclcpp::Node::SharedPtr node_;
   rclcpp::CallbackGroup::SharedPtr cb_group_clients_;
@@ -127,6 +135,10 @@ private:
       sub_table_alignment_;
   std::shared_ptr<std::promise<double>> alignment_promise_;
   std::mutex promise_mutex_;
+
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   template <typename ServiceT, typename CallbackT>
   bool call_service(typename rclcpp::Client<ServiceT>::SharedPtr &client,
