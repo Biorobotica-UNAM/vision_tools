@@ -60,6 +60,7 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
   get_table_alignment_client_ =
       node_->create_client<vision_interfaces::srv::GetTableAlignment>(
           "/vision/get_table_alignment", qos, cb_group_clients_);
+
   focus_client_ =
       node_->create_client<std_srvs::srv::SetBool>(
           "/vision/focus", qos, cb_group_clients_);
@@ -91,7 +92,7 @@ Vision::DetectByClass(const std::string &class_name,
 
   bool completed = call_service<vision_interfaces::srv::DetectByClass>(
       detect_by_class_client_, request,
-      [&](auto response) {
+      [&](vision_interfaces::srv::DetectByClass::Response::SharedPtr response) {
         result.first  = response->success;
         result.second = response->pose;
         RCLCPP_INFO(node_->get_logger(), "DetectByClass [%s] %s",
@@ -111,12 +112,12 @@ bool Vision::DetectPerson(const std::string &name,
 {
   auto request =
       std::make_shared<faces_interfaces::srv::FaceRecog::Request>();
-  request->name = name;   // pass-through; ignored by server if not needed
+  request->name = name;
 
   bool success = false;
   bool completed = call_service<faces_interfaces::srv::FaceRecog>(
       detect_face_client_, request,
-      [&](auto response) {
+      [&](faces_interfaces::srv::FaceRecog::Response::SharedPtr response) {
         success = response->success;
         if (success) {
           if (response->bbox.size() >= 4) {
@@ -143,12 +144,12 @@ bool Vision::IdentifyPerson(std::string &out_name,
 {
   auto request =
       std::make_shared<faces_interfaces::srv::FaceRecog::Request>();
-  request->name = "";   // server identifies from image; name field unused
+  request->name = "";
 
   bool success = false;
   bool completed = call_service<faces_interfaces::srv::FaceRecog>(
       identify_face_client_, request,
-      [&](auto response) {
+      [&](faces_interfaces::srv::FaceRecog::Response::SharedPtr response) {
         success = response->success;
         if (success) {
           out_name = response->name;
@@ -174,7 +175,7 @@ bool Vision::DescribePerson(const std::string &name,
   bool success = false;
   bool completed = call_service<faces_interfaces::srv::FaceRecog>(
       describe_face_client_, request,
-      [&](auto response) {
+      [&](faces_interfaces::srv::FaceRecog::Response::SharedPtr response) {
         success = response->success;
         if (success) {
           out_description = response->description;
@@ -199,7 +200,7 @@ bool Vision::RegisterPerson(const std::string &name,
   bool success = false;
   bool completed = call_service<faces_interfaces::srv::FaceRecog>(
       register_face_client_, request,
-      [&](auto response) {
+      [&](faces_interfaces::srv::FaceRecog::Response::SharedPtr response) {
         success = response->success;
         RCLCPP_INFO(node_->get_logger(), "RegisterPerson %s: %s",
                     success ? "OK" : "FAILED", response->name.c_str());
@@ -223,7 +224,7 @@ Vision::DetectOwlV2(const std::vector<std::string> &queries,
 
   bool completed = call_service<vision_interfaces::srv::GetDetections>(
       owl_v2_client_, request,
-      [&](auto response) {
+      [&](vision_interfaces::srv::GetDetections::Response::SharedPtr response) {
         result.first  = response->success;
         result.second = response->detections;
         RCLCPP_INFO(node_->get_logger(),
@@ -250,7 +251,7 @@ Vision::FindSeat(std::chrono::seconds timeout)
 
   bool completed = call_service<vision_interfaces::srv::FindSeat>(
       find_seat_client_, request,
-      [&](auto response) {
+      [&](vision_interfaces::srv::FindSeat::Response::SharedPtr response) {
         result.first  = response->success;
         result.second = response->point;
         RCLCPP_INFO(node_->get_logger(), "FindSeat %s: %s",
@@ -272,7 +273,7 @@ bool Vision::EnableContinuous(bool enable, std::chrono::seconds timeout)
   bool success = false;
   bool completed = call_service<std_srvs::srv::SetBool>(
       enable_continuous_client_, request,
-      [&](auto response) {
+      [&](std_srvs::srv::SetBool::Response::SharedPtr response) {
         success = response->success;
         RCLCPP_INFO(node_->get_logger(), "EnableContinuous %s %s: %s",
                     enable ? "ON" : "OFF",
@@ -295,7 +296,7 @@ Vision::PointingResult Vision::DetectPointing(std::chrono::seconds timeout)
 
   bool completed = call_service<human_interfaces::srv::DetectPointing>(
       detect_pointing_client_, request,
-      [&](auto response) {
+      [&](human_interfaces::srv::DetectPointing::Response::SharedPtr response) {
         result.human_detected = response->human_detected;
         result.direction      = response->direction;
         result.point          = response->point;
@@ -317,15 +318,22 @@ Vision::PointingResult Vision::DetectPointing(std::chrono::seconds timeout)
 
 double Vision::GetTableAlignment(std::chrono::seconds timeout)
 {
+  auto request = std::make_shared<vision_interfaces::srv::GetTableAlignment::Request>();
+
   auto prom = std::make_shared<std::promise<double>>();
   auto fut  = prom->get_future();
+
+  {
+    std::lock_guard<std::mutex> lock(promise_mutex_);
+    alignment_promise_ = prom;
+  }
 
   double angle = 0.0;
   bool success = false;
 
   bool completed = call_service<vision_interfaces::srv::GetTableAlignment>(
       get_table_alignment_client_, request,
-      [&](auto response) {
+      [&](vision_interfaces::srv::GetTableAlignment::Response::SharedPtr response) {
         success = response->success;
         angle = response->angle;
         RCLCPP_INFO(node_->get_logger(), "GetTableAlignment %s: %s (angle=%.3f)",
@@ -335,7 +343,13 @@ double Vision::GetTableAlignment(std::chrono::seconds timeout)
       timeout, "GetTableAlignment");
 
   if (!completed || !success) {
+    std::lock_guard<std::mutex> lock(promise_mutex_);
+    alignment_promise_ = nullptr;
     return 0.0;
+  }
+
+  if (fut.wait_for(timeout) == std::future_status::ready) {
+    return fut.get();
   }
 
   {
@@ -356,14 +370,16 @@ bool Vision::Focus(bool enable, std::chrono::seconds timeout)
   auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
   request->data = enable;
 
+  bool success = false;
   bool completed = call_service<std_srvs::srv::SetBool>(
       focus_client_, request,
-      [&](auto response) {
+      [&](std_srvs::srv::SetBool::Response::SharedPtr response) {
+        success = response->success;
         RCLCPP_INFO(node_->get_logger(), "Focus %s: %s",
                     enable ? "ON" : "OFF",
-                    response->success ? "OK" : "FAILED");
+                    success ? "OK" : "FAILED");
       },
       timeout, "Focus");
 
-  return completed;
+  return completed && success;
 }
