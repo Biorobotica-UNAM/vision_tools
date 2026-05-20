@@ -30,6 +30,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "faces_interfaces/srv/face_recog.hpp"
 #include "geometry_msgs/msg/point_stamped.hpp"
@@ -50,66 +51,73 @@ using namespace std::chrono_literals;
 
 class Vision {
 public:
+  // Type alias exposed so callers don't repeat this verbose type
+  using YoloDetection =
+      vision_interfaces::srv::GetDetections::Response::_detections_type::
+          value_type;
+
   explicit Vision(const rclcpp::Node::SharedPtr &node);
 
-  // detect_by_class POR PROBAR
+  // ── Object detection ───────────────────────────────────────────────────────
+
   std::pair<bool, geometry_msgs::msg::PoseStamped>
   DetectByClass(const std::string &class_name, const std::string &model,
                 std::chrono::seconds timeout = 5s);
 
-  // FACE SERVICES
+  std::pair<bool, std::vector<YoloDetection>>
+  DetectOwlV2(const std::vector<std::string> &queries,
+              std::chrono::seconds timeout = 10s);
+
+  std::pair<bool, geometry_msgs::msg::PointStamped>
+  FindSeat(std::chrono::seconds timeout = 10s);
+
+  // ── Face pipeline ──────────────────────────────────────────────────────────
+  //
+  //  Typical call sequence:
+  //    1. DetectPerson  → checks if any person is visible; returns bbox + depth
+  //    2. IdentifyPerson → matches face against DB; returns found name via out_name
+  //    3a. If identified  → DescribePerson
+  //    3b. If unknown     → RegisterPerson → DescribePerson
+
   bool DetectPerson(const std::string &name,
+                    std::string &out_coords, float &out_z,
                     std::chrono::seconds timeout = 10s);
 
-  bool IdentifyPerson(const std::string &name,
+  /// Tries to match the current face against the database.
+  /// @param out_name  Filled with the recognised name when returning true.
+  bool IdentifyPerson(std::string &out_name,
                       std::chrono::seconds timeout = 10s);
 
-  bool DescribePerson(const std::string &name,
+  bool DescribePerson(const std::string &name, std::string &out_description,
                       std::chrono::seconds timeout = 10s);
 
   bool RegisterPerson(const std::string &name,
                       std::chrono::seconds timeout = 10s);
 
-  // Object detection
+  // ── Auxiliary ──────────────────────────────────────────────────────────────
 
-  std::pair<bool, std::vector<vision_interfaces::srv::GetDetections::Response::_detections_type::value_type>>
-  DetectOwlV2(const std::vector<std::string> &queries,
-              std::chrono::seconds timeout = 10s);
-
-  // Find seat
-  std::pair<bool, geometry_msgs::msg::PointStamped>
-  FindSeat(std::chrono::seconds timeout = 10s);
-
-  // Enable continuous detection
   bool EnableContinuous(bool enable, std::chrono::seconds timeout = 5s);
 
-  // Pointing detection
   struct PointingResult {
     bool human_detected{false};
     std::string direction;
     geometry_msgs::msg::PointStamped point;
     sensor_msgs::msg::Image pose_image;
   };
-  // Detect pointing direction and point
   PointingResult DetectPointing(std::chrono::seconds timeout = 10s);
-  
-  // Table alignment
+
   double GetTableAlignment(std::chrono::seconds timeout = 1s);
 
-  // Focus
   bool Focus(bool enable, std::chrono::seconds timeout = 5s);
 
-  // Find Object TF
-  bool FindObjectTF(
-    const std::string& query,
-    geometry_msgs::msg::PoseStamped& pose,
-    std::chrono::seconds timeout = 5s);
+  rclcpp::CallbackGroup::SharedPtr getCallbackGroup() const {
+    return cb_group_clients_;
+  }
 
 private:
   rclcpp::Node::SharedPtr node_;
   rclcpp::CallbackGroup::SharedPtr cb_group_clients_;
 
-  // Service clients
   rclcpp::Client<vision_interfaces::srv::DetectByClass>::SharedPtr
       detect_by_class_client_;
   rclcpp::Client<vision_interfaces::srv::GetDetections>::SharedPtr
@@ -128,42 +136,70 @@ private:
       describe_face_client_;
   rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr
       register_face_client_;
-  rclcpp::Client<vision_interfaces::srv::GetTableAlignment>::SharedPtr
-      get_table_alignment_client_;
-  rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr
-      focus_client_;
+  rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr focus_client_;
 
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr
+      sub_table_alignment_;
+  std::shared_ptr<std::promise<double>> alignment_promise_;
+  std::mutex promise_mutex_;
 
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  // ── call_service<T> ────────────────────────────────────────────────────────
+  //
+  // Invariant async flow:
+  //   wait_for_service → async_send_request (callback-based) →
+  //   block on std::future → invoke on_response lambda
+  //
+  // Using shared_ptr<promise> so the response callback never touches
+  // a destroyed object when timeout fires before the service replies.
 
   template <typename ServiceT, typename CallbackT>
-  bool call_service(typename rclcpp::Client<ServiceT>::SharedPtr &client,
-                    typename ServiceT::Request::SharedPtr request,
-                    CallbackT on_response, std::chrono::seconds timeout,
-                    const std::string &label);
+  bool call_service(
+      typename rclcpp::Client<ServiceT>::SharedPtr &client,
+      typename ServiceT::Request::SharedPtr request,
+      CallbackT on_response,
+      std::chrono::seconds timeout,
+      const std::string &label);
 };
 
-//align 
+// ── Template implementation ────────────────────────────────────────────────
+
 template <typename ServiceT, typename CallbackT>
-bool Vision::call_service(typename rclcpp::Client<ServiceT>::SharedPtr &client,
-                          typename ServiceT::Request::SharedPtr request,
-                          CallbackT on_response, std::chrono::seconds timeout,
-                          const std::string &label) {
+bool Vision::call_service(
+    typename rclcpp::Client<ServiceT>::SharedPtr &client,
+    typename ServiceT::Request::SharedPtr request,
+    CallbackT on_response,
+    std::chrono::seconds timeout,
+    const std::string &label)
+{
   if (!client->wait_for_service(1s)) {
-    RCLCPP_ERROR(node_->get_logger(), "%s service not available.",
-                 label.c_str());
+    RCLCPP_ERROR(node_->get_logger(),
+                 "%s service not available.", label.c_str());
     return false;
   }
 
-  auto future = client->async_send_request(request);
+  // Heap-allocated promise: the response callback captures a shared_ptr copy,
+  // so set_value() is always safe even if call_service already returned due
+  // to timeout.
+  auto prom =
+      std::make_shared<std::promise<typename ServiceT::Response::SharedPtr>>();
+  auto fut = prom->get_future();
 
-  if (future.wait_for(timeout) != std::future_status::ready) {
-    RCLCPP_ERROR(node_->get_logger(), "Timeout calling %s service after %ld s.",
+  client->async_send_request(
+      request,
+      [prom](typename rclcpp::Client<ServiceT>::SharedFuture response) {
+        prom->set_value(response.get());
+      });
+
+  if (fut.wait_for(timeout) != std::future_status::ready) {
+    RCLCPP_ERROR(node_->get_logger(),
+                 "Timeout calling %s after %ld s.",
                  label.c_str(), timeout.count());
     return false;
+    // 'prom' refcount drops to 1 here (held by the lambda in the executor).
+    // When the executor eventually fires the callback, set_value() succeeds
+    // safely and the promise is then destroyed — no UB.
   }
 
-  on_response(future.get());
+  on_response(fut.get());
   return true;
 }
