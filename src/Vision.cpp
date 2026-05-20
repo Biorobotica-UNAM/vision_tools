@@ -1,15 +1,5 @@
 /**
  * @brief Facade implementation for Vision services.
- *
- * Each public method is responsible for only two things:
- *   1. Build the service request.
- *   2. Map the service response to the return value.
- *
- * All clients are created in a ReentrantCallbackGroup so their
- * response callbacks can run concurrently with any caller callback.
- * call_service<T>() uses future.wait_for() instead of mutex+cv
- * to avoid deadlocking the executor.
- *
  * BioRobotics Laboratory, Facultad de Ingenieria, UNAM
  */
 
@@ -18,106 +8,121 @@
 
 using namespace std::chrono_literals;
 
-// ============================================================
-// Constructor
-// ============================================================
-
-Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node) {
+Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
+{
   cb_group_clients_ =
       node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+
   const rclcpp::QoS qos = rclcpp::ServicesQoS();
 
-  // Object detection  aun no probado
   detect_by_class_client_ =
       node_->create_client<vision_interfaces::srv::DetectByClass>(
           "/vision/detect_by_class", qos, cb_group_clients_);
 
   owl_v2_client_ =
       node_->create_client<vision_interfaces::srv::GetDetections>(
-          "/vision/owl/owlv2_service", rmw_qos_profile_services_default,
+          "/vision/owl/owlv2_service",
+          rmw_qos_profile_services_default,
           cb_group_clients_);
+
   find_seat_client_ =
       node_->create_client<vision_interfaces::srv::FindSeat>(
           "/vision/find_seat", qos, cb_group_clients_);
+
   enable_continuous_client_ =
       node_->create_client<std_srvs::srv::SetBool>(
           "/vision/enable_continuous", qos, cb_group_clients_);
+
   detect_pointing_client_ =
       node_->create_client<human_interfaces::srv::DetectPointing>(
-          "/human_detection/detect_wrist", rmw_qos_profile_services_default,
+          "/human_detection/detect_wrist",
+          rmw_qos_profile_services_default,
           cb_group_clients_);
 
   detect_face_client_ =
       node_->create_client<faces_interfaces::srv::FaceRecog>(
           "/vision/detect_person", qos, cb_group_clients_);
+
   identify_face_client_ =
       node_->create_client<faces_interfaces::srv::FaceRecog>(
           "/vision/identify_person", qos, cb_group_clients_);
+
   describe_face_client_ =
       node_->create_client<faces_interfaces::srv::FaceRecog>(
           "/vision/describe_person", qos, cb_group_clients_);
+
   register_face_client_ =
       node_->create_client<faces_interfaces::srv::FaceRecog>(
           "/vision/register_person", qos, cb_group_clients_);
 
   focus_client_ =
-        node_->create_client<std_srvs::srv::SetBool>(
-            "/vision/focus", qos, cb_group_clients_);
+      node_->create_client<std_srvs::srv::SetBool>(
+          "/vision/focus", qos, cb_group_clients_);
 
-  // Table alignment topic
   sub_table_alignment_ = node_->create_subscription<std_msgs::msg::Float64>(
       "camera/table_alignment", 10,
       [this](const std_msgs::msg::Float64::SharedPtr msg) {
         std::lock_guard<std::mutex> lock(promise_mutex_);
         if (alignment_promise_) {
           alignment_promise_->set_value(msg->data);
-          alignment_promise_ = nullptr; // fulfill only once per request
+          alignment_promise_ = nullptr;
         }
       });
 }
 
-// ============================================================
-// DetectByClass POR PROBAR
-// ============================================================
+// ── DetectByClass ────────────────────────────────────────────────────────────
 
 std::pair<bool, geometry_msgs::msg::PoseStamped>
-Vision::DetectByClass(const std::string &class_name, const std::string &model,
-                      std::chrono::seconds timeout) {
+Vision::DetectByClass(const std::string &class_name,
+                      const std::string &model,
+                      std::chrono::seconds timeout)
+{
   auto request =
       std::make_shared<vision_interfaces::srv::DetectByClass::Request>();
   request->class_name = class_name;
-  request->model = model;
+  request->model      = model;
 
-  std::pair<bool, geometry_msgs::msg::PoseStamped> result = {false, {}};
+  std::pair<bool, geometry_msgs::msg::PoseStamped> result{false, {}};
 
   bool completed = call_service<vision_interfaces::srv::DetectByClass>(
       detect_by_class_client_, request,
       [&](auto response) {
-        result.first = response->success;
+        result.first  = response->success;
         result.second = response->pose;
         RCLCPP_INFO(node_->get_logger(), "DetectByClass [%s] %s",
                     class_name.c_str(), result.first ? "OK" : "NOT FOUND");
       },
       timeout, "DetectByClass");
 
-  return completed ? result : std::make_pair(false, geometry_msgs::msg::PoseStamped{});
+  return completed ? result
+                   : std::make_pair(false, geometry_msgs::msg::PoseStamped{});
 }
 
-// ============================================================
-// DetectPerson
-// ============================================================
+// ── DetectPerson ─────────────────────────────────────────────────────────────
 
 bool Vision::DetectPerson(const std::string &name,
-                          std::chrono::seconds timeout) {
+                          std::string &out_coords, float &out_z,
+                          std::chrono::seconds timeout)
+{
   auto request =
       std::make_shared<faces_interfaces::srv::FaceRecog::Request>();
-  request->name = name;
+  request->name = name;   // pass-through; ignored by server if not needed
 
   bool success = false;
   bool completed = call_service<faces_interfaces::srv::FaceRecog>(
       detect_face_client_, request,
       [&](auto response) {
         success = response->success;
+        if (success) {
+          if (response->bbox.size() >= 4) {
+            out_coords =
+                std::to_string(static_cast<int>(response->bbox[0])) + "," +
+                std::to_string(static_cast<int>(response->bbox[1])) + "," +
+                std::to_string(static_cast<int>(response->bbox[2])) + "," +
+                std::to_string(static_cast<int>(response->bbox[3]));
+          }
+          out_z = response->z;
+        }
         RCLCPP_INFO(node_->get_logger(), "DetectPerson %s: %s",
                     success ? "OK" : "FAILED", response->name.c_str());
       },
@@ -126,21 +131,23 @@ bool Vision::DetectPerson(const std::string &name,
   return completed && success;
 }
 
-// ============================================================
-// IdentifyPerson
-// ============================================================
+// ── IdentifyPerson ───────────────────────────────────────────────────────────
 
-bool Vision::IdentifyPerson(const std::string &name,
-                            std::chrono::seconds timeout) {
+bool Vision::IdentifyPerson(std::string &out_name,
+                            std::chrono::seconds timeout)
+{
   auto request =
       std::make_shared<faces_interfaces::srv::FaceRecog::Request>();
-  request->name = name;
+  request->name = "";   // server identifies from image; name field unused
 
   bool success = false;
   bool completed = call_service<faces_interfaces::srv::FaceRecog>(
       identify_face_client_, request,
       [&](auto response) {
         success = response->success;
+        if (success) {
+          out_name = response->name;
+        }
         RCLCPP_INFO(node_->get_logger(), "IdentifyPerson %s: %s",
                     success ? "OK" : "FAILED", response->name.c_str());
       },
@@ -149,12 +156,12 @@ bool Vision::IdentifyPerson(const std::string &name,
   return completed && success;
 }
 
-// ============================================================
-// DescribePerson
-// ============================================================
+// ── DescribePerson ───────────────────────────────────────────────────────────
 
 bool Vision::DescribePerson(const std::string &name,
-                            std::chrono::seconds timeout) {
+                            std::string &out_description,
+                            std::chrono::seconds timeout)
+{
   auto request =
       std::make_shared<faces_interfaces::srv::FaceRecog::Request>();
   request->name = name;
@@ -164,6 +171,9 @@ bool Vision::DescribePerson(const std::string &name,
       describe_face_client_, request,
       [&](auto response) {
         success = response->success;
+        if (success) {
+          out_description = response->description;
+        }
         RCLCPP_INFO(node_->get_logger(), "DescribePerson %s: %s",
                     success ? "OK" : "FAILED", response->description.c_str());
       },
@@ -172,12 +182,11 @@ bool Vision::DescribePerson(const std::string &name,
   return completed && success;
 }
 
-// ============================================================
-// RegisterPerson
-// ============================================================
+// ── RegisterPerson ───────────────────────────────────────────────────────────
 
 bool Vision::RegisterPerson(const std::string &name,
-                            std::chrono::seconds timeout) {
+                            std::chrono::seconds timeout)
+{
   auto request =
       std::make_shared<faces_interfaces::srv::FaceRecog::Request>();
   request->name = name;
@@ -195,51 +204,49 @@ bool Vision::RegisterPerson(const std::string &name,
   return completed && success;
 }
 
-// ============================================================
-// DetectOwlV2
-// ============================================================
+// ── DetectOwlV2 ──────────────────────────────────────────────────────────────
 
-using YoloDetection = vision_interfaces::srv::GetDetections::Response::_detections_type::value_type;
-
-std::pair<bool, std::vector<YoloDetection>>
+std::pair<bool, std::vector<Vision::YoloDetection>>
 Vision::DetectOwlV2(const std::vector<std::string> &queries,
-                    std::chrono::seconds timeout) {
+                    std::chrono::seconds timeout)
+{
   auto request =
       std::make_shared<vision_interfaces::srv::GetDetections::Request>();
   request->queries = queries;
 
-  std::pair<bool, std::vector<YoloDetection>> result = {false, {}};
+  std::pair<bool, std::vector<Vision::YoloDetection>> result{false, {}};
 
   bool completed = call_service<vision_interfaces::srv::GetDetections>(
       owl_v2_client_, request,
       [&](auto response) {
-        result.first = response->success;
+        result.first  = response->success;
         result.second = response->detections;
-        RCLCPP_INFO(node_->get_logger(), "DetectOwlV2 %s: %zu detection(s). %s",
-                    result.first ? "OK" : "FAILED", result.second.size(),
+        RCLCPP_INFO(node_->get_logger(),
+                    "DetectOwlV2 %s: %zu detection(s). %s",
+                    result.first ? "OK" : "FAILED",
+                    result.second.size(),
                     response->message.c_str());
       },
       timeout, "DetectOwlV2");
 
-  return completed ? result : std::make_pair(false, std::vector<YoloDetection>{});
+  return completed ? result
+                   : std::make_pair(false, std::vector<Vision::YoloDetection>{});
 }
 
-// ============================================================
-// FindSeat
-// ============================================================
+// ── FindSeat ─────────────────────────────────────────────────────────────────
 
 std::pair<bool, geometry_msgs::msg::PointStamped>
-Vision::FindSeat(std::chrono::seconds timeout) {
+Vision::FindSeat(std::chrono::seconds timeout)
+{
   auto request =
       std::make_shared<vision_interfaces::srv::FindSeat::Request>();
-  // Request is empty — acts as a trigger
 
-  std::pair<bool, geometry_msgs::msg::PointStamped> result = {false, {}};
+  std::pair<bool, geometry_msgs::msg::PointStamped> result{false, {}};
 
   bool completed = call_service<vision_interfaces::srv::FindSeat>(
       find_seat_client_, request,
       [&](auto response) {
-        result.first = response->success;
+        result.first  = response->success;
         result.second = response->point;
         RCLCPP_INFO(node_->get_logger(), "FindSeat %s: %s",
                     result.first ? "OK" : "FAILED", response->message.c_str());
@@ -250,11 +257,10 @@ Vision::FindSeat(std::chrono::seconds timeout) {
                    : std::make_pair(false, geometry_msgs::msg::PointStamped{});
 }
 
-// ============================================================
-// EnableContinuous
-// ============================================================
+// ── EnableContinuous ─────────────────────────────────────────────────────────
 
-bool Vision::EnableContinuous(bool enable, std::chrono::seconds timeout) {
+bool Vision::EnableContinuous(bool enable, std::chrono::seconds timeout)
+{
   auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
   request->data = enable;
 
@@ -264,7 +270,8 @@ bool Vision::EnableContinuous(bool enable, std::chrono::seconds timeout) {
       [&](auto response) {
         success = response->success;
         RCLCPP_INFO(node_->get_logger(), "EnableContinuous %s %s: %s",
-                    enable ? "ON" : "OFF", success ? "OK" : "FAILED",
+                    enable ? "ON" : "OFF",
+                    success ? "OK" : "FAILED",
                     response->message.c_str());
       },
       timeout, "EnableContinuous");
@@ -272,15 +279,12 @@ bool Vision::EnableContinuous(bool enable, std::chrono::seconds timeout) {
   return completed && success;
 }
 
-// ============================================================
-// DetectPointing
-// ============================================================
+// ── DetectPointing ───────────────────────────────────────────────────────────
 
-Vision::PointingResult
-Vision::DetectPointing(std::chrono::seconds timeout) {
+Vision::PointingResult Vision::DetectPointing(std::chrono::seconds timeout)
+{
   auto request =
       std::make_shared<human_interfaces::srv::DetectPointing::Request>();
-  // Request is empty
 
   PointingResult result{};
 
@@ -288,9 +292,9 @@ Vision::DetectPointing(std::chrono::seconds timeout) {
       detect_pointing_client_, request,
       [&](auto response) {
         result.human_detected = response->human_detected;
-        result.direction = response->direction;
-        result.point = response->point;
-        result.pose_image = response->pose_image;
+        result.direction      = response->direction;
+        result.point          = response->point;
+        result.pose_image     = response->pose_image;
         RCLCPP_INFO(node_->get_logger(),
                     "DetectPointing: human=%s direction=%s",
                     result.human_detected ? "YES" : "NO",
@@ -304,13 +308,12 @@ Vision::DetectPointing(std::chrono::seconds timeout) {
   return result;
 }
 
-// ============================================================
-// GetTableAlignment  (topic-based — promise pattern, not a service)
-// ============================================================
+// ── GetTableAlignment ────────────────────────────────────────────────────────
 
-double Vision::GetTableAlignment(std::chrono::seconds timeout) {
+double Vision::GetTableAlignment(std::chrono::seconds timeout)
+{
   auto prom = std::make_shared<std::promise<double>>();
-  auto fut = prom->get_future();
+  auto fut  = prom->get_future();
 
   {
     std::lock_guard<std::mutex> lock(promise_mutex_);
@@ -321,26 +324,32 @@ double Vision::GetTableAlignment(std::chrono::seconds timeout) {
     return fut.get();
   }
 
+  {
+    std::lock_guard<std::mutex> lock(promise_mutex_);
+    alignment_promise_ = nullptr;
+  }
+
   RCLCPP_WARN(node_->get_logger(),
               "Timeout waiting for table alignment topic after %ld s.",
               timeout.count());
   return 0.0;
 }
 
-// ============================================================
-// Focus 
-// ============================================================
+// ── Focus ────────────────────────────────────────────────────────────────────
 
-bool Vision::Focus(bool enable, std::chrono::seconds timeout) {
-    auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
-    request->data = enable;
+bool Vision::Focus(bool enable, std::chrono::seconds timeout)
+{
+  auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
+  request->data = enable;
 
-    bool completed = call_service<std_srvs::srv::SetBool>(
-        focus_client_, request,
-        [&](auto response) {
-          RCLCPP_INFO(node_->get_logger(), "Focus %s: %s",
-                      enable ? "ON" : "OFF", response->success ? "OK" : "FAILED");
-        },
-        timeout, "Focus");
-    return completed;
+  bool completed = call_service<std_srvs::srv::SetBool>(
+      focus_client_, request,
+      [&](auto response) {
+        RCLCPP_INFO(node_->get_logger(), "Focus %s: %s",
+                    enable ? "ON" : "OFF",
+                    response->success ? "OK" : "FAILED");
+      },
+      timeout, "Focus");
+
+  return completed;
 }
