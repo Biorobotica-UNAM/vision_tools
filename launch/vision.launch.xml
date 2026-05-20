@@ -78,7 +78,7 @@
         <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
     </node>
 
-<!--
+
     <node
       pkg="table_alignment"
       exec="table_segmenter_node"
@@ -87,7 +87,7 @@
       output="screen">
         <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
     </node>
--->
+
 <!--
     <node
       pkg="vision_tools"

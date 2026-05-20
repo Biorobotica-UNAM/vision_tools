@@ -5,6 +5,8 @@
 
 #include "vision_tools/Vision.hpp"
 #include <vector>
+#include <algorithm>
+#include "tf2/exceptions.h"
 
 using namespace std::chrono_literals;
 
@@ -55,6 +57,9 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
       node_->create_client<faces_interfaces::srv::FaceRecog>(
           "/vision/register_person", qos, cb_group_clients_);
 
+  get_table_alignment_client_ =
+      node_->create_client<vision_interfaces::srv::GetTableAlignment>(
+          "/vision/get_table_alignment", qos, cb_group_clients_);
   focus_client_ =
       node_->create_client<std_srvs::srv::SetBool>(
           "/vision/focus", qos, cb_group_clients_);
@@ -315,13 +320,22 @@ double Vision::GetTableAlignment(std::chrono::seconds timeout)
   auto prom = std::make_shared<std::promise<double>>();
   auto fut  = prom->get_future();
 
-  {
-    std::lock_guard<std::mutex> lock(promise_mutex_);
-    alignment_promise_ = prom;
-  }
+  double angle = 0.0;
+  bool success = false;
 
-  if (fut.wait_for(timeout) == std::future_status::ready) {
-    return fut.get();
+  bool completed = call_service<vision_interfaces::srv::GetTableAlignment>(
+      get_table_alignment_client_, request,
+      [&](auto response) {
+        success = response->success;
+        angle = response->angle;
+        RCLCPP_INFO(node_->get_logger(), "GetTableAlignment %s: %s (angle=%.3f)",
+                    success ? "OK" : "FAILED", response->message.c_str(),
+                    angle);
+      },
+      timeout, "GetTableAlignment");
+
+  if (!completed || !success) {
+    return 0.0;
   }
 
   {

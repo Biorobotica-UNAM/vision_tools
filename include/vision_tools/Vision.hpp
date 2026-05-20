@@ -28,7 +28,6 @@
 #include <chrono>
 #include <future>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,6 +43,9 @@
 #include "vision_interfaces/srv/detect_by_class.hpp"
 #include "vision_interfaces/srv/find_seat.hpp"
 #include "vision_interfaces/srv/get_detections.hpp"
+#include "vision_interfaces/srv/get_table_alignment.hpp"
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/transform_listener.h"
 
 using namespace std::chrono_literals;
 
