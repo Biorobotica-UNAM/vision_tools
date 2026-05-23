@@ -45,6 +45,10 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
       node_->create_client<faces_interfaces::srv::FaceRecog>(
           "/vision/detect_person", qos, cb_group_clients_);
 
+  bbox_to_pose_client_ =
+      node_->create_client<vision_interfaces::srv::BboxToPose>(
+          "/vision/bbox_to_pose", rmw_qos_profile_services_default, cb_group_clients_);
+
   identify_face_client_ =
       node_->create_client<faces_interfaces::srv::FaceRecog>(
           "/vision/identify_person", qos, cb_group_clients_);
@@ -126,6 +130,96 @@ bool Vision::DetectPerson(const std::string &name,
       timeout, "DetectPerson");
 
   return completed && success;
+}
+
+// ── DetectPerson ─────────────────────────────────────────────────────────────
+
+bool Vision::DetectPersonPose(
+    PersonDetection &out_detection,
+    std::chrono::seconds timeout)
+{
+  std::string coords;
+  float z = 0.f;
+
+  if (!DetectPerson("", coords, z, timeout)) {
+    return false;
+  }
+
+  int32_t x1{0}, y1{0}, x2{0}, y2{0};
+
+  try {
+    std::istringstream ss(coords);
+    std::string tok;
+    std::vector<int32_t> vals;
+
+    while (std::getline(ss, tok, ',')) {
+      vals.push_back(static_cast<int32_t>(std::stoi(tok)));
+    }
+
+    if (vals.size() < 4) {
+      RCLCPP_WARN(node_->get_logger(),
+                  "DetectPersonPose: invalid bbox '%s'",
+                  coords.c_str());
+      return false;
+    }
+
+    x1 = vals[0];
+    y1 = vals[1];
+    x2 = vals[2];
+    y2 = vals[3];
+  }
+  catch (const std::exception &e) {
+    RCLCPP_ERROR(node_->get_logger(),
+                 "DetectPersonPose parse error: %s",
+                 e.what());
+    return false;
+  }
+
+  if (!bbox_to_pose_client_->wait_for_service(1s)) {
+    RCLCPP_ERROR(node_->get_logger(),
+                 "BboxToPose service not available");
+    return false;
+  }
+
+  auto request =
+      std::make_shared<vision_interfaces::srv::BboxToPose::Request>();
+
+  request->header.stamp    = node_->now();
+  request->header.frame_id = "head_front_camera_rgb_optical_frame";
+
+  request->x1 = x1;
+  request->y1 = y1;
+  request->x2 = x2;
+  request->y2 = y2;
+
+  geometry_msgs::msg::PoseStamped pose;
+  bool success = false;
+
+  bool completed =
+      call_service<vision_interfaces::srv::BboxToPose>(
+          bbox_to_pose_client_,
+          request,
+          [&](vision_interfaces::srv::BboxToPose::Response::SharedPtr response)
+          {
+            success = response->success;
+
+            if (success) {
+              pose = response->pose;
+            }
+          },
+          timeout,
+          "BboxToPose");
+
+  if (!completed || !success) {
+    return false;
+  }
+
+  out_detection.success = true;
+  out_detection.coords  = coords;
+  out_detection.z       = z;
+  out_detection.pose    = pose;
+
+  return true;
 }
 
 // ── IdentifyPerson ───────────────────────────────────────────────────────────

@@ -21,6 +21,7 @@
 #include "vision_interfaces/srv/detect_by_class.hpp"
 #include "vision_interfaces/srv/find_seat.hpp"
 #include "vision_interfaces/srv/get_detections.hpp"
+#include "vision_interfaces/srv/bbox_to_pose.hpp"
 #include "vision_interfaces/srv/get_table_alignment.hpp"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
@@ -54,6 +55,9 @@ public:
                     std::string &out_coords, float &out_z,
                     std::chrono::seconds timeout = 10s);
 
+  bool DetectPersonPose(PersonDetection &out_detection,
+    					std::chrono::seconds timeout = 10s);
+
   bool IdentifyPerson(std::string &out_name,
                       std::chrono::seconds timeout = 10s);
 
@@ -67,12 +71,20 @@ public:
 
   bool EnableContinuous(bool enable, std::chrono::seconds timeout = 5s);
 
+  struct PersonDetection {
+    bool success{false};
+    std::string coords;
+    float z{0.f};
+    geometry_msgs::msg::PoseStamped pose;
+  };
+
   struct PointingResult {
     bool human_detected{false};
     std::string direction;
     geometry_msgs::msg::PointStamped point;
     sensor_msgs::msg::Image pose_image;
   };
+
   PointingResult DetectPointing(std::chrono::seconds timeout = 10s);
 
   double GetTableAlignment(std::chrono::seconds timeout = 1s);
@@ -93,6 +105,7 @@ private:
   rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr enable_continuous_client_;
   rclcpp::Client<human_interfaces::srv::DetectPointing>::SharedPtr detect_pointing_client_;
   rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr detect_face_client_;
+  rclcpp::Client<vision_interfaces::srv::BboxToPose>::SharedPtr bbox_to_pose_client_;
   rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr identify_face_client_;
   rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr describe_face_client_;
   rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr register_face_client_;
