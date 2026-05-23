@@ -65,15 +65,6 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
       node_->create_client<std_srvs::srv::SetBool>(
           "/vision/focus", qos, cb_group_clients_);
 
-  sub_table_alignment_ = node_->create_subscription<std_msgs::msg::Float64>(
-      "camera/table_alignment", 10,
-      [this](const std_msgs::msg::Float64::SharedPtr msg) {
-        std::lock_guard<std::mutex> lock(promise_mutex_);
-        if (alignment_promise_) {
-          alignment_promise_->set_value(msg->data);
-          alignment_promise_ = nullptr;
-        }
-      });
 }
 
 // ── DetectByClass ────────────────────────────────────────────────────────────
@@ -318,49 +309,35 @@ Vision::PointingResult Vision::DetectPointing(std::chrono::seconds timeout)
 
 double Vision::GetTableAlignment(std::chrono::seconds timeout)
 {
-  auto request = std::make_shared<vision_interfaces::srv::GetTableAlignment::Request>();
-
-  auto prom = std::make_shared<std::promise<double>>();
-  auto fut  = prom->get_future();
-
-  {
-    std::lock_guard<std::mutex> lock(promise_mutex_);
-    alignment_promise_ = prom;
-  }
+  auto request =
+      std::make_shared<vision_interfaces::srv::GetTableAlignment::Request>();
 
   double angle = 0.0;
   bool success = false;
 
   bool completed = call_service<vision_interfaces::srv::GetTableAlignment>(
-      get_table_alignment_client_, request,
-      [&](vision_interfaces::srv::GetTableAlignment::Response::SharedPtr response) {
+      get_table_alignment_client_,
+      request,
+      [&](vision_interfaces::srv::GetTableAlignment::Response::SharedPtr response)
+      {
         success = response->success;
-        angle = response->angle;
-        RCLCPP_INFO(node_->get_logger(), "GetTableAlignment %s: %s (angle=%.3f)",
-                    success ? "OK" : "FAILED", response->message.c_str(),
-                    angle);
+        angle   = response->angle;
+
+        RCLCPP_INFO(
+            node_->get_logger(),
+            "GetTableAlignment %s: %s (angle=%.3f)",
+            success ? "OK" : "FAILED",
+            response->message.c_str(),
+            angle);
       },
-      timeout, "GetTableAlignment");
+      timeout,
+      "GetTableAlignment");
 
   if (!completed || !success) {
-    std::lock_guard<std::mutex> lock(promise_mutex_);
-    alignment_promise_ = nullptr;
     return 0.0;
   }
 
-  if (fut.wait_for(timeout) == std::future_status::ready) {
-    return fut.get();
-  }
-
-  {
-    std::lock_guard<std::mutex> lock(promise_mutex_);
-    alignment_promise_ = nullptr;
-  }
-
-  RCLCPP_WARN(node_->get_logger(),
-              "Timeout waiting for table alignment topic after %ld s.",
-              timeout.count());
-  return 0.0;
+  return angle;
 }
 
 // ── Focus ────────────────────────────────────────────────────────────────────

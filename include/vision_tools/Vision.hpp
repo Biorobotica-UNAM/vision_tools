@@ -6,12 +6,10 @@
  */
 
 #include <chrono>
-#include <future>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
-#include <mutex>
 
 #include "faces_interfaces/srv/face_recog.hpp"
 #include "geometry_msgs/msg/point_stamped.hpp"
@@ -19,7 +17,6 @@
 #include "human_interfaces/srv/detect_pointing.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
-#include "std_msgs/msg/float64.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 #include "vision_interfaces/srv/detect_by_class.hpp"
 #include "vision_interfaces/srv/find_seat.hpp"
@@ -101,10 +98,6 @@ private:
   rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr register_face_client_;
   rclcpp::Client<vision_interfaces::srv::GetTableAlignment>::SharedPtr get_table_alignment_client_;
   rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr focus_client_;
-
-  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sub_table_alignment_;
-  std::shared_ptr<std::promise<double>> alignment_promise_;
-  std::mutex promise_mutex_;
 
   template <typename ServiceT, typename CallbackT>
   bool call_service(
