@@ -55,9 +55,6 @@ public:
                     std::string &out_coords, float &out_z,
                     std::chrono::seconds timeout = 10s);
 
-  bool DetectPersonPose(PersonDetection &out_detection,
-    					std::chrono::seconds timeout = 10s);
-
   bool IdentifyPerson(std::string &out_name,
                       std::chrono::seconds timeout = 10s);
 
@@ -77,6 +74,8 @@ public:
     float z{0.f};
     geometry_msgs::msg::PoseStamped pose;
   };
+
+  bool DetectPersonPose(PersonDetection &out_detection, std::chrono::seconds timeout = 10s);
 
   struct PointingResult {
     bool human_detected{false};
