@@ -337,6 +337,7 @@ Vision::DetectOwlV2(const std::vector<std::string> &queries,
 bool Vision::GetOwlPose(
     const std::string& object_name,
     geometry_msgs::msg::PoseStamped& pose,
+    std::string& detected_name,
     std::chrono::seconds timeout)
 {
     auto result = DetectOwlV2({object_name}, timeout);
@@ -345,6 +346,7 @@ bool Vision::GetOwlPose(
         return false;
 
     std::string label = result.second[0].class_name;
+	detected_name = label;
     std::replace(label.begin(), label.end(), ' ', '_');
 
     const rclcpp::Time now_time = node_->get_clock()->now();

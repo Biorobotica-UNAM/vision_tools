@@ -90,6 +90,7 @@ public:
   bool GetOwlPose(
     const std::string& object_name,
     geometry_msgs::msg::PoseStamped& pose,
+    std::string& detected_name,
     std::chrono::seconds timeout = 10s);
 
   static constexpr int    MAX_OWL_INSTANCES = 5;
