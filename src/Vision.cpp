@@ -69,6 +69,14 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
       node_->create_client<std_srvs::srv::SetBool>(
           "/vision/focus", qos, cb_group_clients_);
 
+  tf_buffer_ =
+    std::make_shared<tf2_ros::Buffer>(
+        node_->get_clock());
+
+  tf_listener_ =
+    std::make_shared<tf2_ros::TransformListener>(
+        *tf_buffer_);
+
 }
 
 // ── DetectByClass ────────────────────────────────────────────────────────────
@@ -322,6 +330,86 @@ Vision::DetectOwlV2(const std::vector<std::string> &queries,
 
   return completed ? result
                    : std::make_pair(false, std::vector<Vision::YoloDetection>{});
+}
+
+// ── GetOwlPose ─────────────────────────────────────────────────────────────────
+
+bool Vision::GetOwlPose(
+    const std::string& object_name,
+    geometry_msgs::msg::PoseStamped& pose,
+    std::chrono::seconds timeout)
+{
+    auto result = DetectOwlV2({object_name}, timeout);
+
+    if (!result.first || result.second.empty())
+        return false;
+
+    std::string label = result.second[0].class_name;
+    std::replace(label.begin(), label.end(), ' ', '_');
+
+    const rclcpp::Time now_time = node_->get_clock()->now();
+
+    std::string best_frame;
+    double best_age = 9999.0;
+
+    geometry_msgs::msg::TransformStamped best_tf;
+
+    for (int i = 0; i < MAX_OWL_INSTANCES; ++i)
+    {
+        const std::string candidate =
+            "OWL_" + label + "_" + std::to_string(i);
+
+        try
+        {
+            auto tf_stamped = tf_buffer_->lookupTransform(
+                "base_link",
+                candidate,
+                tf2::TimePointZero,
+                tf2::durationFromSec(0.1));
+
+            double age =
+                std::abs(
+                    now_time.seconds() -
+                    rclcpp::Time(tf_stamped.header.stamp).seconds());
+
+            if (age < best_age)
+            {
+                best_age = age;
+                best_frame = candidate;
+                best_tf = tf_stamped;
+            }
+        }
+        catch (...)
+        {
+            break;
+        }
+    }
+
+    if (best_frame.empty())
+        return false;
+
+    if (best_age > MAX_TF_AGE_S)
+        return false;
+
+    pose.header.frame_id = "base_link";
+    pose.header.stamp.sec = 0;
+    pose.header.stamp.nanosec = 0;
+
+    pose.pose.position.x =
+        best_tf.transform.translation.x;
+
+    pose.pose.position.y =
+        best_tf.transform.translation.y;
+
+    pose.pose.position.z =
+        std::max(
+            best_tf.transform.translation.z,
+            MIN_Z_HEIGHT);
+
+    pose.pose.orientation =
+        best_tf.transform.rotation;
+
+    return true;
 }
 
 // ── FindSeat ─────────────────────────────────────────────────────────────────
