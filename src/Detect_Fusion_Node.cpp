@@ -31,17 +31,35 @@ public:
     cbg_srv_     = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     cbg_clients_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
 
-    for (const auto& [model, service_name] : detector_services_){
-      detectors_[model] = this->create_client<GetDetections>(service_name, rclcpp::ServicesQoS(), cbg_clients_);
-      RCLCPP_INFO(get_logger(), "Cliente listo para %s en: %s", model.c_str(), service_name.c_str());
-    }
+  // Guys, please. Make sure the code compiles with ROS 2 Humble too. We talked about this!!!
+  //const rclcpp::QoS qos = rclcpp::ServicesQoS();
+  const rmw_qos_profile_t qos = rmw_qos_profile_services_default;
 
-    pc_client_ = this->create_client<BboxToPose>(pc_srv_name_, rclcpp::ServicesQoS(), cbg_clients_);
+    //for (const auto& [model, service_name] : detector_services_){
+    //  detectors_[model] = this->create_client<GetDetections>(service_name, rclcpp::ServicesQoS(), cbg_clients_);
+    //  RCLCPP_INFO(get_logger(), "Cliente listo para %s en: %s", model.c_str(), service_name.c_str());
+    //}
 
-    srv_ = this->create_service<DetectByClass>(
-      "/detect_by_class",
-      std::bind(&DetectFusionNode::handle, this, std::placeholders::_1, std::placeholders::_2),
-      rclcpp::ServicesQoS(), cbg_srv_);
+  for (const auto& [model, service_name] : detector_services_)
+  {
+    detectors_[model] = this->create_client<GetDetections>(service_name, qos, cbg_clients_);
+    RCLCPP_INFO(get_logger(), "Cliente listo para %s en: %s", model.c_str(), service_name.c_str());
+  }
+
+    //pc_client_ = this->create_client<BboxToPose>(pc_srv_name_, rclcpp::ServicesQoS(), cbg_clients_);
+    pc_client_ = this->create_client<BboxToPose>(pc_srv_name_, qos, cbg_clients_);
+
+    //srv_ = this->create_service<DetectByClass>(
+    //  "/detect_by_class",
+    //  std::bind(&DetectFusionNode::handle, this, std::placeholders::_1, std::placeholders::_2),
+    //  rclcpp::ServicesQoS(), cbg_srv_);
+    srv_ = this->create_service<DetectByClass>("/detect_by_class",
+                                                std::bind(&DetectFusionNode::handle, 
+                                                          this,
+                                                          std::placeholders::_1,
+                                                          std::placeholders::_2),
+                                                qos,
+                                                cbg_srv_);
   }
 
 private:
