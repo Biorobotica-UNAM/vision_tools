@@ -88,6 +88,21 @@
         <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
     </node>
 
+    <node
+      pkg="table_alignment"
+      exec="table_drop_tf_node"
+      name="table_drop_tf_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+        <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
+        <param name="fixed_frame_id" value="map"/>
+        <param name="validation_frame_id" value="base_link"/>
+        <param name="table_frame_id" value="table_frame"/>
+        <param name="drop_start_frame_id" value="table_drop_start"/>
+        <param name="drop_points_file" value="src/Vision/table_alignment/src/table_drop_points.txt"/>
+        <param name="active_on_start" value="false"/>
+    </node>
+
 <!--
     <node
       pkg="vision_tools"
