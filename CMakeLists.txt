@@ -57,7 +57,11 @@ ament_target_dependencies(detect_seats_node
   vision_interfaces
   tf2_ros
   geometry_msgs
+  OpenCV
+  cv_bridge
 )
+
+target_link_libraries(detect_seats_node ${OpenCV_LIBS})
 
 ament_target_dependencies(Detect_Fusion_Node
   rclcpp

@@ -10,6 +10,9 @@
 #include "vision_interfaces/srv/bbox_to_pose.hpp"
 #include "vision_interfaces/srv/get_detections.hpp"
 #include "vision_interfaces/msg/yolo_detection.hpp"
+#include "sensor_msgs/msg/image.hpp"
+#include "cv_bridge/cv_bridge.hpp"
+#include <opencv2/opencv.hpp>
 
 using std::placeholders::_1;
 using std::placeholders::_2;
@@ -42,6 +45,9 @@ public:
     this->declare_parameter<double>("yolo_timeout_sec", 3.0);
     this->declare_parameter<double>("bbox_timeout_sec", 3.0);
 
+    // [DEBUG] parámetro topic de imagen raw para el debug
+    this->declare_parameter<std::string>("image_topic", "hardware/camera/image_raw");
+
     yolo_service_ = this->get_parameter("yolo_service").as_string();
     bbox_to_pose_service_ = this->get_parameter("bbox_to_pose_service").as_string();
     find_seat_service_ = this->get_parameter("find_seat_service").as_string();
@@ -55,8 +61,6 @@ public:
     yolo_timeout_sec_ = this->get_parameter("yolo_timeout_sec").as_double();
     bbox_timeout_sec_ = this->get_parameter("bbox_timeout_sec").as_double();
 
-  
-    
     // =========================
     // Clients
     // =========================
@@ -65,7 +69,6 @@ public:
     
     bbox_to_pose_client_ = this->create_client<vision_interfaces::srv::BboxToPose>(
       bbox_to_pose_service_, rmw_qos_profile_services_default, cb_group_);
-    
 
     // =========================
     // Service
@@ -75,6 +78,15 @@ public:
       std::bind(&DetectSeatsNode::handleFindSeat, this, _1, _2),
       rmw_qos_profile_services_default, cb_group_);
 
+    // [DEBUG] subscriber de imagen raw + publisher de imagen debug
+    std::string image_topic = this->get_parameter("image_topic").as_string();
+    image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
+      image_topic, rclcpp::SensorDataQoS(),
+      [this](const sensor_msgs::msg::Image::SharedPtr msg) { last_image_ = msg; },
+      sub_options_);
+
+    debug_image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(
+      "/vision/detect_seats/debug_image", 10);
 
     RCLCPP_INFO(this->get_logger(), "Detect seats node started.");
   }
@@ -109,6 +121,7 @@ private:
     // 1. Get detections from YOLO
     // =====================================
     auto yolo_req = std::make_shared<vision_interfaces::srv::GetDetections::Request>();
+    yolo_req->queries = {"person", "chair", "couch"};
     auto yolo_future = yolo_detection_client_->async_send_request(yolo_req);
 
     if (yolo_future.wait_for(std::chrono::duration<double>(yolo_timeout_sec_)) != std::future_status::ready) {
@@ -153,6 +166,19 @@ private:
     // =====================================
     std::vector<SeatInfo> free_seats;
 
+    // [DEBUG] preparar imagen de debug si hay imagen disponible
+    cv::Mat debug_img;
+    bool has_debug_img = false;
+    if (last_image_) {
+      try {
+        auto cv_ptr = cv_bridge::toCvCopy(last_image_, "rgb8");
+        debug_img = cv_ptr->image.clone();
+        has_debug_img = true;
+      } catch (...) {
+        RCLCPP_WARN(this->get_logger(), "[DEBUG] No se pudo convertir imagen para debug");
+      }
+    }
+
     for (const auto & seat_msg : seats) {
       const double width = seat_msg.x_max - seat_msg.x_min;
       const double height = seat_msg.y_max - seat_msg.y_min;
@@ -170,6 +196,21 @@ private:
         }
       }
 
+      // [DEBUG] dibujar bbox del asiento: ROJO=ocupado, VERDE=libre
+      if (has_debug_img) {
+        cv::Rect seat_rect(
+          static_cast<int>(seat_msg.x_min),
+          static_cast<int>(seat_msg.y_min),
+          static_cast<int>(width),
+          static_cast<int>(height));
+        cv::Scalar color = occupied ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 0);
+        std::string label = occupied ? "OCCUPIED" : "FREE";
+        cv::rectangle(debug_img, seat_rect, color, 2);
+        cv::putText(debug_img, label,
+          cv::Point(seat_rect.x, seat_rect.y - 6),
+          cv::FONT_HERSHEY_SIMPLEX, 0.6, color, 2);
+      }
+
       if (occupied) {
         continue;
       }
@@ -178,6 +219,25 @@ private:
       if (pose_opt.has_value()) {
         free_seats.push_back(pose_opt.value());
       }
+    }
+
+    // [DEBUG] dibujar bbox de personas en AZUL
+    if (has_debug_img) {
+      for (const auto & person_msg : persons) {
+        cv::Rect person_rect(
+          static_cast<int>(person_msg.x_min),
+          static_cast<int>(person_msg.y_min),
+          static_cast<int>(person_msg.x_max - person_msg.x_min),
+          static_cast<int>(person_msg.y_max - person_msg.y_min));
+        cv::rectangle(debug_img, person_rect, cv::Scalar(255, 0, 0), 2);
+        cv::putText(debug_img, "PERSON",
+          cv::Point(person_rect.x, person_rect.y - 6),
+          cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 0, 0), 2);
+      }
+
+      // [DEBUG] publicar imagen debug
+      auto out_msg = cv_bridge::CvImage(last_image_->header, "rgb8", debug_img).toImageMsg();
+      debug_image_pub_->publish(*out_msg);
     }
 
     // =====================================
@@ -279,6 +339,11 @@ private:
   double service_wait_sec_;
   double yolo_timeout_sec_;
   double bbox_timeout_sec_;
+
+  // [DEBUG] imagen raw y publisher de debug
+  sensor_msgs::msg::Image::SharedPtr last_image_;
+  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_image_pub_;
 };
 
 int main(int argc, char **argv)
