@@ -70,8 +70,8 @@
 
     <node
       pkg="human_detection"
-      exec="wave_detector"
-      name="wave_detector_node"
+      exec="pose_detector"
+      name="pose_detector_node"
       namespace="$(var namespace_vision)"
       output="screen">
         <param name="image_topic"   value="$(var image_topic)"/>
