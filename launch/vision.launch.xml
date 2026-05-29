@@ -110,11 +110,25 @@
       namespace="$(var namespace_vision)"
       output="screen">
         <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
-        <param name="fixed_frame_id" value="map"/>
+        <param name="fixed_frame_id" value="base_link"/>
         <param name="validation_frame_id" value="base_link"/>
         <param name="container_frame_id" value="container_frame"/>
         <param name="drop_start_frame_id" value="container_drop_start"/>
         <param name="drop_points_file" value="src/Vision/vacancy_detector/src/container_drop_points.txt"/>
+        <param name="container_min_width_m" value="0.12"/>
+        <param name="container_min_depth_m" value="0.07"/>
+        <param name="object_min_height_m" value="0.25"/>
+        <param name="object_max_height_m" value="0.55"/>
+        <param name="safe_abs_y_max_m" value="0.42"/>
+        <param name="safe_z_max_m" value="1.10"/>
+        <param name="start_clearance_m" value="0.0"/>
+        <param name="drop_x_offset_m" value="0.08"/>
+        <param name="drop_y_offset_m" value="0.0"/>
+        <param name="override_drop_y" value="true"/>
+        <param name="drop_y_override_m" value="0.0"/>
+        <param name="cluster_tolerance_m" value="0.065"/>
+        <param name="min_wall_coverage" value="0.25"/>
+        <param name="max_interior_fill_ratio" value="1.05"/>
         <param name="active_on_start" value="false"/>
     </node>
 
