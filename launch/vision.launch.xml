@@ -121,10 +121,15 @@
         <param name="object_max_height_m" value="0.55"/>
         <param name="safe_abs_y_max_m" value="0.42"/>
         <param name="safe_z_max_m" value="1.10"/>
+        <!-- Altura extra de la esfera/TF sobre el borde detectado de la cubeta. -->
         <param name="start_clearance_m" value="0.0"/>
+        <!-- Offset frontal de la esfera/TF. En base_link, +X la mete mas hacia el interior de la cubeta. -->
         <param name="drop_x_offset_m" value="0.08"/>
+        <!-- Offset lateral relativo. En base_link, +Y mueve la esfera a la izquierda y -Y a la derecha. -->
         <param name="drop_y_offset_m" value="0.0"/>
+        <!-- Fuerza la coordenada Y de la esfera/TF cuando la cubeta esta centrada pero la nube detecta el borde. -->
         <param name="override_drop_y" value="true"/>
+        <!-- Y absoluto usado si override_drop_y=true; 0.0 deja la esfera al centro del robot. -->
         <param name="drop_y_override_m" value="0.0"/>
         <param name="cluster_tolerance_m" value="0.065"/>
         <param name="min_wall_coverage" value="0.25"/>
