@@ -23,9 +23,6 @@
 #include "vision_interfaces/srv/get_detections.hpp"
 #include "vision_interfaces/srv/bbox_to_pose.hpp"
 #include "vision_interfaces/srv/get_table_alignment.hpp"
-#include "tf2_ros/buffer.h"
-#include "tf2_ros/transform_listener.h"
-#include "tf2/time.h"
 
 using namespace std::chrono_literals;
 
@@ -93,17 +90,11 @@ public:
     std::string& detected_name,
     std::chrono::seconds timeout = 10s);
 
-  static constexpr int    MAX_OWL_INSTANCES = 5;
-  static constexpr double MAX_TF_AGE_S      = 2.0;
   static constexpr double MIN_Z_HEIGHT      = 0.5;
 
   double GetTableAlignment(std::chrono::seconds timeout = 1s);
 
   bool Focus(bool enable, std::chrono::seconds timeout = 5s);
-
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   rclcpp::CallbackGroup::SharedPtr getCallbackGroup() const {
     return cb_group_clients_;

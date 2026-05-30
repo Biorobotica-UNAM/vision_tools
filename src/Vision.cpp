@@ -6,7 +6,6 @@
 #include "vision_tools/Vision.hpp"
 #include <vector>
 #include <algorithm>
-#include "tf2/exceptions.h"
 
 using namespace std::chrono_literals;
 
@@ -70,14 +69,6 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
   focus_client_ =
       node_->create_client<std_srvs::srv::SetBool>(
           "/vision/focus", qos, cb_group_clients_);
-
-  tf_buffer_ =
-    std::make_shared<tf2_ros::Buffer>(
-        node_->get_clock());
-
-  tf_listener_ =
-    std::make_shared<tf2_ros::TransformListener>(
-        *tf_buffer_);
 
 }
 
@@ -347,71 +338,89 @@ bool Vision::GetOwlPose(
     if (!result.first || result.second.empty())
         return false;
 
-    std::string label = result.second[0].class_name;
-	detected_name = label;
-    std::replace(label.begin(), label.end(), ' ', '_');
+    // Tomar mejor detección
+    const auto& det = result.second[0];
 
-    const rclcpp::Time now_time = node_->get_clock()->now();
+    detected_name = det.class_name;
 
-    std::string best_frame;
-    double best_age = 9999.0;
-
-    geometry_msgs::msg::TransformStamped best_tf;
-
-    for (int i = 0; i < MAX_OWL_INSTANCES; ++i)
+    // Verificar servicio
+    if (!bbox_to_pose_client_->wait_for_service(1s))
     {
-        const std::string candidate =
-            "OWL_" + label + "_" + std::to_string(i);
+        RCLCPP_ERROR(
+            node_->get_logger(),
+            "BboxToPose service not available");
 
-        try
-        {
-            auto tf_stamped = tf_buffer_->lookupTransform(
-                "base_link",
-                candidate,
-                tf2::TimePointZero,
-                tf2::durationFromSec(0.1));
-
-            double age =
-                std::abs(
-                    now_time.seconds() -
-                    rclcpp::Time(tf_stamped.header.stamp).seconds());
-
-            if (age < best_age)
-            {
-                best_age = age;
-                best_frame = candidate;
-                best_tf = tf_stamped;
-            }
-        }
-        catch (...)
-        {
-            break;
-        }
+        return false;
     }
 
-    if (best_frame.empty())
+    // Crear request
+    auto request =
+        std::make_shared<
+            vision_interfaces::srv::BboxToPose::Request>();
+
+    request->header.stamp = node_->now();
+
+    request->header.frame_id =
+        "head_front_camera_rgb_optical_frame";
+
+    // OWL bbox
+    request->x1 =
+    static_cast<int32_t>(det.x_min);
+
+	request->y1 =
+		static_cast<int32_t>(det.y_min);
+
+	request->x2 =
+		static_cast<int32_t>(det.x_max);
+
+	request->y2 =
+		static_cast<int32_t>(det.y_max);
+
+    bool success = false;
+
+    bool completed =
+        call_service<vision_interfaces::srv::BboxToPose>(
+            bbox_to_pose_client_,
+            request,
+            [&](vision_interfaces::srv::BboxToPose::Response::SharedPtr response)
+            {
+                success = response->success;
+
+                if (success)
+                {
+                    pose = response->pose;
+
+                    RCLCPP_INFO(
+                        node_->get_logger(),
+                        "BboxToPose OK "
+                        "pos=[%.3f %.3f %.3f] "
+                        "quat=[%.3f %.3f %.3f %.3f]",
+                        pose.pose.position.x,
+                        pose.pose.position.y,
+                        pose.pose.position.z,
+                        pose.pose.orientation.x,
+                        pose.pose.orientation.y,
+                        pose.pose.orientation.z,
+                        pose.pose.orientation.w);
+                }
+            },
+            timeout,
+            "BboxToPose");
+
+    if (!completed || !success)
+    {
+        RCLCPP_WARN(
+            node_->get_logger(),
+            "Failed to compute pose from bbox");
+
         return false;
+    }
 
-    if (best_age > MAX_TF_AGE_S)
-        return false;
-
-    pose.header.frame_id = "base_link";
-    pose.header.stamp.sec = 0;
-    pose.header.stamp.nanosec = 0;
-
-    pose.pose.position.x =
-        best_tf.transform.translation.x;
-
-    pose.pose.position.y =
-        best_tf.transform.translation.y;
-
+    // Clamp mínimo de altura
     pose.pose.position.z =
         std::max(
-            best_tf.transform.translation.z,
+            pose.pose.position.z,
             MIN_Z_HEIGHT);
-
-    pose.pose.orientation =
-        best_tf.transform.rotation;
 
     return true;
 }
