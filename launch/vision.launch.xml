@@ -2,7 +2,8 @@
 <launch>
 
     <arg name="namespace_vision"   default="vision"/>
-    <arg name="model_path"         default="yolo11m.pt"/>
+    <arg name="model_name"         default="yolo11m.pt"/>
+    <arg name="container_yolo_world_model" default="yolov8s-worldv2.pt"/>
     <arg name="image_topic"        default="/hardware/camera/image_raw"/>  <!--/hardware/camera/image_raw && /kinect/image_raw-->
     <arg name="pointcloud_topic"   default="/hardware/camera/points"/>  <!--/hardware/camera/points && /kinect/points--> 
 
@@ -12,8 +13,22 @@
       name="yolo_detect_node"
       namespace="$(var namespace_vision)"
       output="screen">
-        <param name="model_path"   value="$(var model_path)"/>
+        <param name="model_name"   value="$(var model_name)"/>
         <param name="image_topic"   value="$(var image_topic)"/>
+    </node>
+
+    <node
+      pkg="vacancy_detector"
+      exec="container_yolo_world_node.py"
+      name="container_yolo_world_node"
+      namespace="$(var namespace_vision)"
+      output="screen">
+        <param name="image_topic" value="$(var image_topic)"/>
+        <param name="model_name" value="$(var container_yolo_world_model)"/>
+        <param name="device" value="cuda"/>
+        <param name="conf_th" value="0.75"/>
+        <param name="imgsz" value="640"/>
+        <param name="classes" value="['bucket', 'trash can', 'waste basket', 'plastic bin', 'container', 'red bucket']"/>
     </node>
 
     <node
@@ -124,13 +139,33 @@
         <!-- Altura extra de la esfera/TF sobre el borde detectado de la cubeta. -->
         <param name="start_clearance_m" value="0.0"/>
         <!-- Offset frontal de la esfera/TF. En base_link, +X la mete mas hacia el interior de la cubeta. -->
-        <param name="drop_x_offset_m" value="0.08"/>
+        <param name="drop_x_offset_m" value="0.12"/>
         <!-- Offset lateral relativo. En base_link, +Y mueve la esfera a la izquierda y -Y a la derecha. -->
         <param name="drop_y_offset_m" value="0.0"/>
         <!-- Fuerza la coordenada Y de la esfera/TF cuando la cubeta esta centrada pero la nube detecta el borde. -->
         <param name="override_drop_y" value="true"/>
         <!-- Y absoluto usado si override_drop_y=true; 0.0 deja la esfera al centro del robot. -->
         <param name="drop_y_override_m" value="0.0"/>
+        <!-- Usa YOLO para delimitar la ventana RGB antes de procesar la nube 3D del contenedor. -->
+        <param name="use_yolo_roi" value="true"/>
+        <!-- Servicio GetDetections del nodo YOLO bajo el namespace /vision. -->
+        <param name="yolo_service" value="/vision/container_yolo_world/detection"/>
+        <!-- Clases que se le piden a YOLO; ajustarlas segun el modelo disponible. -->
+        <param name="yolo_queries" value="['bucket', 'trash can', 'waste basket', 'plastic bin', 'container', 'red bucket']"/>
+        <!-- Confianza minima para aceptar un bbox de YOLO como ROI de busqueda. -->
+        <param name="yolo_min_confidence" value="0.30"/>
+        <!-- Pixeles extra alrededor del bbox para no cortar el borde del contenedor. -->
+        <param name="yolo_bbox_padding_px" value="80"/>
+        <!-- Tiempo maximo de espera por bbox antes de caer al metodo geometrico anterior. -->
+        <param name="yolo_wait_timeout_sec" value="12.0"/>
+        <!-- Si el bbox de YOLO recorta demasiado y la geometria falla, descarta YOLO tras N intentos. -->
+        <param name="yolo_max_roi_failures" value="3"/>
+        <!-- Pixeles extra agregados en cada intento fallido antes de abandonar la ROI de YOLO. -->
+        <param name="yolo_roi_expand_step_px" value="80"/>
+        <!-- Margen 3D para aceptar candidatos cercanos al perimetro visto por YOLO cuando se usa nube completa. -->
+        <param name="yolo_gate_margin_m" value="0.12"/>
+        <!-- Si YOLO falla, permite seguir con la geometria anterior para no bloquear el drop. -->
+        <param name="fallback_without_yolo" value="true"/>
         <param name="cluster_tolerance_m" value="0.065"/>
         <param name="min_wall_coverage" value="0.25"/>
         <param name="max_interior_fill_ratio" value="1.05"/>
