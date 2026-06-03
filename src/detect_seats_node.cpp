@@ -46,8 +46,7 @@ public:
     this->declare_parameter<double>("yolo_timeout_sec", 3.0);
     this->declare_parameter<double>("bbox_timeout_sec", 3.0);
 
-    // [DEBUG] parámetro topic de imagen raw para el debug
-    this->declare_parameter<std::string>("image_topic", "hardware/camera/image_raw");
+    this->declare_parameter<std::string>("image_topic", "/hardware/camera/image_raw");
 
     yolo_service_ = this->get_parameter("yolo_service").as_string();
     bbox_to_pose_service_ = this->get_parameter("bbox_to_pose_service").as_string();
@@ -82,12 +81,15 @@ public:
     // [DEBUG] subscriber de imagen raw + publisher de imagen debug
     std::string image_topic = this->get_parameter("image_topic").as_string();
     image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-      image_topic, rclcpp::SensorDataQoS(),
+      image_topic, 10,
       [this](const sensor_msgs::msg::Image::SharedPtr msg) { last_image_ = msg; },
       sub_options_);
 
+    rclcpp::QoS debug_qos(1);
+    debug_qos.reliable();
+    debug_qos.transient_local();
     debug_image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(
-      "/vision/detect_seats/debug_image", 10);
+      "/vision/detect_seats/debug_image", debug_qos);
 
     RCLCPP_INFO(this->get_logger(), "Detect seats node started.");
   }
@@ -167,7 +169,6 @@ private:
     // =====================================
     std::vector<SeatInfo> free_seats;
 
-    // [DEBUG] preparar imagen de debug si hay imagen disponible
     cv::Mat debug_img;
     bool has_debug_img = false;
     if (last_image_) {
@@ -197,7 +198,6 @@ private:
         }
       }
 
-      // [DEBUG] dibujar bbox del asiento: ROJO=ocupado, VERDE=libre
       if (has_debug_img) {
         cv::Rect seat_rect(
           static_cast<int>(seat_msg.x_min),
@@ -221,8 +221,7 @@ private:
         free_seats.push_back(pose_opt.value());
       }
     }
-
-    // [DEBUG] dibujar bbox de personas en AZUL
+    // verde = asiento libre, rojo = ocupado, azul = persona
     if (has_debug_img) {
       for (const auto & person_msg : persons) {
         cv::Rect person_rect(
@@ -236,7 +235,6 @@ private:
           cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 0, 0), 2);
       }
 
-      // [DEBUG] publicar imagen debug
       auto out_msg = cv_bridge::CvImage(last_image_->header, "rgb8", debug_img).toImageMsg();
       debug_image_pub_->publish(*out_msg);
     }
@@ -341,7 +339,7 @@ private:
   double yolo_timeout_sec_;
   double bbox_timeout_sec_;
 
-  // [DEBUG] imagen raw y publisher de debug
+  // DEBUG
   sensor_msgs::msg::Image::SharedPtr last_image_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_image_pub_;

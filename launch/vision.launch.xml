@@ -63,7 +63,7 @@
     <node
       pkg="owlv2_detect"
       exec="Analize_node"
-      name="Analize_cat_node"
+      name="Analize_node"
       namespace="$(var namespace_vision)"
       output="screen">
     </node>

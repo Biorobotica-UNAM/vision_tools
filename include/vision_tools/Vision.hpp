@@ -23,6 +23,7 @@
 #include "vision_interfaces/srv/get_detections.hpp"
 #include "vision_interfaces/srv/bbox_to_pose.hpp"
 #include "vision_interfaces/srv/get_table_alignment.hpp"
+#include "vision_interfaces/srv/get_analytics.hpp"
 
 using namespace std::chrono_literals;
 
@@ -62,6 +63,26 @@ public:
   bool RegisterPerson(const std::string &name,
                       std::chrono::seconds timeout = 10s);
 
+
+  // ── Analytics ────────────────────────────────────────────────────────
+  bool AnalyzeCount(const std::string &target_class, bool reset_count,
+                    int32_t &out_current_count, int32_t &out_class_count, int32_t &out_total_cumulative,
+                    std::chrono::seconds timeout = 5s);
+
+  bool AnalyzeSize(const std::string &target_class, const std::string &filter_mode, int32_t count_limit,
+                   YoloDetection &out_best_match,
+                   std::vector<YoloDetection> &out_detections,
+                   std::chrono::seconds timeout = 5s);
+
+  bool AnalyzeColor(const std::string &target_class, const std::string &color,
+                    YoloDetection &out_best_match,
+                    std::chrono::seconds timeout = 5s);
+
+  bool AnalyzeCompare(const std::vector<std::string> &compare_classes,
+                      std::string &out_winner_class,
+                      std::chrono::seconds timeout = 5s);
+
+                    
   // ── Auxiliary ──────────────────────────────────────────────────────────────
 
   bool EnableContinuous(bool enable, std::chrono::seconds timeout = 5s);
@@ -116,6 +137,10 @@ private:
   rclcpp::Client<faces_interfaces::srv::FaceRecog>::SharedPtr register_face_client_;
   rclcpp::Client<vision_interfaces::srv::GetTableAlignment>::SharedPtr get_table_alignment_client_;
   rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr focus_client_;
+  rclcpp::Client<vision_interfaces::srv::GetAnalytics>::SharedPtr count_analize_client_;
+  rclcpp::Client<vision_interfaces::srv::GetAnalytics>::SharedPtr size_analize_client_;
+  rclcpp::Client<vision_interfaces::srv::GetAnalytics>::SharedPtr color_analize_client_;
+  rclcpp::Client<vision_interfaces::srv::GetAnalytics>::SharedPtr compare_analize_client_;
 
   template <typename ServiceT, typename CallbackT>
   bool call_service(
