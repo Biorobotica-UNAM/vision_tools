@@ -6,9 +6,7 @@
     <arg name="container_yolo_world_model" default="yolov8s-worldv2.pt"/>
     <arg name="image_topic"        default="/hardware/camera/image_raw"/>  <!--/hardware/camera/image_raw && /kinect/image_raw-->
     <arg name="pointcloud_topic"   default="/hardware/camera/points"/>  <!--/hardware/camera/points && /kinect/points--> 
-    <arg name="table_filtered_cloud_topic" default="/$(var namespace_vision)/table/points_filtered"/>
-    <arg name="container_filtered_cloud_topic" default="/$(var namespace_vision)/container/points_filtered"/>
-    <arg name="shelf_filtered_cloud_topic" default="/$(var namespace_vision)/shelf/points_filtered"/>
+    <arg name="vacancy_filtered_cloud_topic" default="/$(var namespace_vision)/vacancy/points_filtered"/>
 
     <node
       pkg="yolo_detect"
@@ -100,68 +98,22 @@
     <node
       pkg="vacancy_detector"
       exec="vacancy_cloud_filter_node"
-      name="table_cloud_filter"
+      name="vacancy_cloud_filter"
       namespace="$(var namespace_vision)"
       output="screen">
-        <param name="profile" value="table"/>
+        <param name="profile" value="shared"/>
         <param name="input_topic" value="$(var pointcloud_topic)"/>
-        <param name="output_topic" value="$(var table_filtered_cloud_topic)"/>
+        <param name="output_topic" value="$(var vacancy_filtered_cloud_topic)"/>
         <param name="active_on_start" value="false"/>
-        <param name="preserve_organized" value="false"/>
-        <param name="roi_x_min_m" value="0.15"/>
-        <param name="roi_x_max_m" value="1.40"/>
-        <param name="roi_y_min_m" value="-0.80"/>
-        <param name="roi_y_max_m" value="0.80"/>
-        <param name="roi_z_min_m" value="0.25"/>
-        <param name="roi_z_max_m" value="1.45"/>
-        <param name="voxel_leaf_size" value="0.015"/>
-        <param name="input_downsampling" value="1"/>
-        <param name="min_points_per_voxel" value="1"/>
-        <param name="pause_navigation_on_enable" value="true"/>
-    </node>
-
-    <node
-      pkg="vacancy_detector"
-      exec="vacancy_cloud_filter_node"
-      name="container_cloud_filter"
-      namespace="$(var namespace_vision)"
-      output="screen">
-        <param name="profile" value="container"/>
-        <param name="input_topic" value="$(var pointcloud_topic)"/>
-        <param name="output_topic" value="$(var container_filtered_cloud_topic)"/>
-        <param name="active_on_start" value="false"/>
-        <!-- El contenedor usa YOLO bbox sobre nube organizada; solo invalidamos puntos fuera de ROI. -->
+        <!-- Filtro compartido: conserva organizacion para que el contenedor pueda usar YOLO bbox. -->
         <param name="preserve_organized" value="true"/>
-        <param name="roi_x_min_m" value="0.20"/>
+        <param name="roi_x_min_m" value="0.15"/>
         <param name="roi_x_max_m" value="1.60"/>
         <param name="roi_y_min_m" value="-0.85"/>
         <param name="roi_y_max_m" value="0.85"/>
         <param name="roi_z_min_m" value="-0.20"/>
-        <param name="roi_z_max_m" value="1.05"/>
-        <param name="input_downsampling" value="1"/>
-        <param name="pause_navigation_on_enable" value="true"/>
-    </node>
-
-    <node
-      pkg="vacancy_detector"
-      exec="vacancy_cloud_filter_node"
-      name="shelf_cloud_filter"
-      namespace="$(var namespace_vision)"
-      output="screen">
-        <param name="profile" value="shelf"/>
-        <param name="input_topic" value="$(var pointcloud_topic)"/>
-        <param name="output_topic" value="$(var shelf_filtered_cloud_topic)"/>
-        <param name="active_on_start" value="false"/>
-        <param name="preserve_organized" value="false"/>
-        <param name="roi_x_min_m" value="0.20"/>
-        <param name="roi_x_max_m" value="1.60"/>
-        <param name="roi_y_min_m" value="-0.85"/>
-        <param name="roi_y_max_m" value="0.85"/>
-        <param name="roi_z_min_m" value="0.25"/>
         <param name="roi_z_max_m" value="1.75"/>
-        <param name="voxel_leaf_size" value="0.015"/>
         <param name="input_downsampling" value="1"/>
-        <param name="min_points_per_voxel" value="1"/>
         <param name="pause_navigation_on_enable" value="true"/>
     </node>
 
@@ -180,8 +132,8 @@
       name="table_drop_tf_node"
       namespace="$(var namespace_vision)"
       output="screen">
-        <param name="pointcloud_topic" value="$(var table_filtered_cloud_topic)"/>
-        <param name="cloud_filter_enable_service" value="/$(var namespace_vision)/table_cloud_filter/enable"/>
+        <param name="pointcloud_topic" value="$(var vacancy_filtered_cloud_topic)"/>
+        <param name="cloud_filter_enable_service" value="/$(var namespace_vision)/vacancy_cloud_filter/enable"/>
         <param name="fixed_frame_id" value="map"/>
         <param name="validation_frame_id" value="base_link"/>
         <param name="table_frame_id" value="table_frame"/>
@@ -196,8 +148,8 @@
       name="container_drop_tf_node"
       namespace="$(var namespace_vision)"
       output="screen">
-        <param name="pointcloud_topic" value="$(var container_filtered_cloud_topic)"/>
-        <param name="cloud_filter_enable_service" value="/$(var namespace_vision)/container_cloud_filter/enable"/>
+        <param name="pointcloud_topic" value="$(var vacancy_filtered_cloud_topic)"/>
+        <param name="cloud_filter_enable_service" value="/$(var namespace_vision)/vacancy_cloud_filter/enable"/>
         <param name="fixed_frame_id" value="base_link"/>
         <param name="validation_frame_id" value="base_link"/>
         <param name="container_frame_id" value="container_frame"/>
@@ -251,8 +203,8 @@
       name="shelf_drop_tf_node"
       namespace="$(var namespace_vision)"
       output="screen">
-        <param name="pointcloud_topic" value="$(var shelf_filtered_cloud_topic)"/>
-        <param name="cloud_filter_enable_service" value="/$(var namespace_vision)/shelf_cloud_filter/enable"/>
+        <param name="pointcloud_topic" value="$(var vacancy_filtered_cloud_topic)"/>
+        <param name="cloud_filter_enable_service" value="/$(var namespace_vision)/vacancy_cloud_filter/enable"/>
         <param name="fixed_frame_id" value="map"/>
         <param name="validation_frame_id" value="base_link"/>
         <param name="shelf_frame_id" value="shelf_frame"/>
