@@ -70,6 +70,21 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
       node_->create_client<std_srvs::srv::SetBool>(
           "/vision/focus", qos, cb_group_clients_);
 
+  count_analize_client_ =
+      node_->create_client<vision_interfaces::srv::GetAnalytics>(
+          "vision/count_objects", qos, cb_group_clients_);
+  
+  size_analize_client_ =
+      node_->create_client<vision_interfaces::srv::GetAnalytics>(
+          "vision/get_by_size", qos, cb_group_clients_);
+  
+  color_analize_client_ =
+      node_->create_client<vision_interfaces::srv::GetAnalytics>(
+          "vision/get_by_color", qos, cb_group_clients_);
+  
+  compare_analize_client_ =
+      node_->create_client<vision_interfaces::srv::GetAnalytics>(
+          "vision/compare_count", qos, cb_group_clients_);
 }
 
 // ── DetectByClass ────────────────────────────────────────────────────────────
@@ -555,3 +570,117 @@ bool Vision::Focus(bool enable, std::chrono::seconds timeout)
 
   return completed && success;
 }
+
+// ── Analyze count ────────────────────────────────────────────────────────────
+
+bool Vision::AnalyzeCount(const std::string &target_class, bool reset_count,
+                          int32_t &out_current_count, int32_t &out_class_count, int32_t &out_total_cumulative,
+                          std::chrono::seconds timeout)
+{
+  auto request = std::make_shared<vision_interfaces::srv::GetAnalytics::Request>();
+  request->action = "count";
+  request->target_class = target_class;
+  request->reset_count = reset_count;
+
+  bool success = false;
+  bool completed = call_service<vision_interfaces::srv::GetAnalytics>(
+      count_analize_client_, request,
+      [&](vision_interfaces::srv::GetAnalytics::Response::SharedPtr response) {
+        success = response->success;
+        if (success) {
+          out_current_count = response->current_count;
+          out_class_count   = response->class_count;
+          out_total_cumulative = response->total_cumulative;
+        }
+        RCLCPP_INFO(node_->get_logger(), "AnalyzeCount [%s] %s: %s",
+                    target_class.c_str(), success ? "OK" : "FAILED", response->message.c_str());
+      },
+      timeout, "AnalyzeCount");
+
+  return completed && success;
+}
+
+// ── Analyze Size ─────────────────────────────────────────────────────────────
+
+bool Vision::AnalyzeSize(const std::string &target_class, const std::string &filter_mode, int32_t count_limit,
+                         vision_interfaces::msg::YoloDetection &out_best_match,
+                         std::vector<vision_interfaces::msg::YoloDetection> &out_detections,
+                         std::chrono::seconds timeout)
+{
+  auto request = std::make_shared<vision_interfaces::srv::GetAnalytics::Request>();
+  request->action = "get_by_size";
+  request->target_class = target_class;
+  request->filter_mode = filter_mode; // "big" | "small" | "mixed"
+  request->count_limit = count_limit;
+
+  bool success = false;
+  bool completed = call_service<vision_interfaces::srv::GetAnalytics>(
+      size_analize_client_, request,
+      [&](vision_interfaces::srv::GetAnalytics::Response::SharedPtr response) {
+        success = response->success;
+        if (success && response->has_best_match) {
+          out_best_match = response->best_match;
+          out_detections = response->detections;
+        }
+        RCLCPP_INFO(node_->get_logger(), "AnalyzeSize [%s - %s] %s: %s",
+                    target_class.c_str(), filter_mode.c_str(), success ? "OK" : "FAILED", response->message.c_str());
+      },
+      timeout, "AnalyzeSize");
+
+  return completed && success;
+}
+
+// ── Analyze Color ────────────────────────────────────────────────────────────
+
+bool Vision::AnalyzeColor(const std::string &target_class, const std::string &color,
+                          vision_interfaces::msg::YoloDetection &out_best_match,
+                          std::chrono::seconds timeout)
+{
+  auto request = std::make_shared<vision_interfaces::srv::GetAnalytics::Request>();
+  request->action = "get_by_color";
+  request->target_class = target_class;
+  request->color = color;
+
+  bool success = false;
+  bool completed = call_service<vision_interfaces::srv::GetAnalytics>(
+      color_analize_client_, request,
+      [&](vision_interfaces::srv::GetAnalytics::Response::SharedPtr response) {
+        success = response->success;
+        if (success && response->has_best_match) {
+          out_best_match = response->best_match;
+        }
+        RCLCPP_INFO(node_->get_logger(), "AnalyzeColor [%s - %s] %s: %s",
+                    target_class.c_str(), color.c_str(), success ? "OK" : "FAILED", response->message.c_str());
+      },
+      timeout, "AnalyzeColor");
+
+  return completed && success;
+}
+
+// ── Analyze Compare ──────────────────────────────────────────────────────────
+
+bool Vision::AnalyzeCompare(const std::vector<std::string> &compare_classes,
+                            std::string &out_winner_class,
+                            std::chrono::seconds timeout)
+{
+  auto request = std::make_shared<vision_interfaces::srv::GetAnalytics::Request>();
+  request->action = "compare_count";
+  request->compare_classes = compare_classes;
+
+  bool success = false;
+  bool completed = call_service<vision_interfaces::srv::GetAnalytics>(
+      compare_analize_client_, request,
+      [&](vision_interfaces::srv::GetAnalytics::Response::SharedPtr response) {
+        success = response->success;
+        if (success) {
+          out_winner_class = response->winner_class;
+        }
+        RCLCPP_INFO(node_->get_logger(), "AnalyzeCompare %s: %s",
+                    success ? "OK" : "FAILED", response->message.c_str());
+      },
+      timeout, "AnalyzeCompare");
+
+  return completed && success;
+}
+
+
