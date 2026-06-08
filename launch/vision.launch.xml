@@ -3,7 +3,6 @@
 
     <arg name="namespace_vision"   default="vision"/>
     <arg name="model_name"         default="yolo11m.pt"/>
-    <arg name="container_yolo_world_model" default="yolov8s-worldv2.pt"/>
     <arg name="image_topic"        default="/hardware/camera/image_raw"/>  <!--/hardware/camera/image_raw && /kinect/image_raw-->
     <arg name="pointcloud_topic"   default="/hardware/camera/points"/>  <!--/hardware/camera/points && /kinect/points--> 
     <arg name="vacancy_filtered_cloud_topic" default="/$(var namespace_vision)/vacancy/points_filtered"/>
@@ -16,20 +15,6 @@
       output="screen">
         <param name="model_name"   value="$(var model_name)"/>
         <param name="image_topic"   value="$(var image_topic)"/>
-    </node>
-
-    <node
-      pkg="vacancy_detector"
-      exec="container_yolo_world_node.py"
-      name="container_yolo_world_node"
-      namespace="$(var namespace_vision)"
-      output="screen">
-        <param name="image_topic" value="$(var image_topic)"/>
-        <param name="model_name" value="$(var container_yolo_world_model)"/>
-        <param name="device" value="cuda"/>
-        <param name="conf_th" value="0.75"/>
-        <param name="imgsz" value="640"/>
-        <param name="classes" value="['bucket', 'trash can', 'waste basket', 'plastic bin', 'container', 'red bucket']"/>
     </node>
 
     <node
@@ -74,6 +59,12 @@
       output="screen">
       <param name="image_topic" value="$(var image_topic)"/>
       <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
+      <param name="detection_service" value="owl/owlv2_service"/>
+      <param name="detections_topic" value="/$(var namespace_vision)/detections"/>
+      <param name="debug_image_topic" value="/$(var namespace_vision)/owl/debug_image"/>
+      <param name="conf_threshold" value="0.32"/>
+      <param name="nms_iou_threshold" value="0.30"/>
+      <!-- OWLv2 reemplaza a YOLO-World para delimitar el contenedor por bbox RGB. -->
     </node>
 
     <node
@@ -105,7 +96,7 @@
         <param name="input_topic" value="$(var pointcloud_topic)"/>
         <param name="output_topic" value="$(var vacancy_filtered_cloud_topic)"/>
         <param name="active_on_start" value="false"/>
-        <!-- Filtro compartido: conserva organizacion para que el contenedor pueda usar YOLO bbox. -->
+        <!-- Filtro compartido: conserva organizacion para que el contenedor pueda usar el bbox visual. -->
         <param name="preserve_organized" value="true"/>
         <param name="roi_x_min_m" value="0.15"/>
         <param name="roi_x_max_m" value="1.60"/>
@@ -171,25 +162,25 @@
         <param name="override_drop_y" value="true"/>
         <!-- Y absoluto usado si override_drop_y=true; 0.0 deja la esfera al centro del robot. -->
         <param name="drop_y_override_m" value="0.0"/>
-        <!-- Usa YOLO para delimitar la ventana RGB antes de procesar la nube 3D del contenedor. -->
+        <!-- Usa OWLv2 para delimitar la ventana RGB antes de procesar la nube del contenedor. -->
         <param name="use_yolo_roi" value="true"/>
-        <!-- Servicio GetDetections del nodo YOLO bajo el namespace /vision. -->
-        <param name="yolo_service" value="/vision/container_yolo_world/detection"/>
-        <!-- Clases que se le piden a YOLO; ajustarlas segun el modelo disponible. -->
-        <param name="yolo_queries" value="['bucket', 'trash can', 'waste basket', 'plastic bin', 'container', 'red bucket']"/>
-        <!-- Confianza minima para aceptar un bbox de YOLO como ROI de busqueda. -->
-        <param name="yolo_min_confidence" value="0.30"/>
+        <!-- Servicio GetDetections de OWLv2 bajo el namespace /vision. -->
+        <param name="yolo_service" value="/vision/owl/owlv2_service"/>
+        <!-- Prompts que OWLv2 expande a variantes utiles para contenedores. -->
+        <param name="yolo_queries" value="['container_drop']"/>
+        <!-- Confianza minima para aceptar un bbox de OWLv2 como ROI de busqueda. -->
+        <param name="yolo_min_confidence" value="0.20"/>
         <!-- Pixeles extra alrededor del bbox para no cortar el borde del contenedor. -->
         <param name="yolo_bbox_padding_px" value="80"/>
         <!-- Tiempo maximo de espera por bbox antes de caer al metodo geometrico anterior. -->
         <param name="yolo_wait_timeout_sec" value="12.0"/>
-        <!-- Si el bbox de YOLO recorta demasiado y la geometria falla, descarta YOLO tras N intentos. -->
+        <!-- Si el bbox de OWLv2 recorta demasiado y la geometria falla, descarta la ROI visual tras N intentos. -->
         <param name="yolo_max_roi_failures" value="3"/>
-        <!-- Pixeles extra agregados en cada intento fallido antes de abandonar la ROI de YOLO. -->
+        <!-- Pixeles extra agregados en cada intento fallido antes de abandonar la ROI visual. -->
         <param name="yolo_roi_expand_step_px" value="80"/>
-        <!-- Margen 3D para aceptar candidatos cercanos al perimetro visto por YOLO cuando se usa nube completa. -->
+        <!-- Margen en metros para aceptar candidatos cercanos al perimetro visto por OWLv2 cuando se usa nube completa. -->
         <param name="yolo_gate_margin_m" value="0.12"/>
-        <!-- Si YOLO falla, permite seguir con la geometria anterior para no bloquear el drop. -->
+        <!-- Si OWLv2 falla, permite seguir con la geometria anterior para no bloquear el drop. -->
         <param name="fallback_without_yolo" value="true"/>
         <param name="cluster_tolerance_m" value="0.065"/>
         <param name="min_wall_coverage" value="0.25"/>
