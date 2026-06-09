@@ -142,7 +142,7 @@
         <param name="drop_start_frame_id" value="container_drop_start"/>
         <param name="drop_points_file" value="src/Vision/vacancy_detector/src/container_drop_points.txt"/>
         <param name="container_min_width_m" value="0.12"/>
-        <param name="container_min_depth_m" value="0.07"/>
+        <param name="container_min_depth_m" value="0.025"/>
         <param name="object_min_height_m" value="0.25"/>
         <param name="object_max_height_m" value="0.55"/>
         <param name="safe_abs_y_max_m" value="0.42"/>
