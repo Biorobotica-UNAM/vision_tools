@@ -59,11 +59,6 @@
       output="screen">
       <param name="image_topic" value="$(var image_topic)"/>
       <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
-      <param name="detection_service" value="owl/owlv2_service"/>
-      <param name="detections_topic" value="/$(var namespace_vision)/detections"/>
-      <param name="debug_image_topic" value="/$(var namespace_vision)/owl/debug_image"/>
-      <param name="conf_threshold" value="0.32"/>
-      <param name="nms_iou_threshold" value="0.30"/>
       <!-- OWLv2 reemplaza a YOLO-World para delimitar el contenedor por bbox RGB. -->
     </node>
 
