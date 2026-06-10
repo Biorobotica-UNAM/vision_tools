@@ -142,7 +142,7 @@
         <param name="drop_start_frame_id" value="container_drop_start"/>
         <param name="drop_points_file" value="src/Vision/vacancy_detector/src/container_drop_points.txt"/>
         <param name="container_min_width_m" value="0.12"/>
-        <param name="container_min_depth_m" value="0.025"/>
+        <param name="container_min_depth_m" value="0.12"/>
         <param name="object_min_height_m" value="0.25"/>
         <param name="object_max_height_m" value="0.55"/>
         <param name="safe_abs_y_max_m" value="0.42"/>
@@ -150,7 +150,7 @@
         <!-- Altura extra de la esfera/TF sobre el borde detectado de la cubeta. -->
         <param name="start_clearance_m" value="0.0"/>
         <!-- Offset frontal de la esfera/TF. En base_link, +X la mete mas hacia el interior de la cubeta. -->
-        <param name="drop_x_offset_m" value="0.12"/>
+        <param name="drop_x_offset_m" value="0.0"/>
         <!-- Offset lateral relativo. En base_link, +Y mueve la esfera a la izquierda y -Y a la derecha. -->
         <param name="drop_y_offset_m" value="0.0"/>
         <!-- Fuerza la coordenada Y de la esfera/TF cuando la cubeta esta centrada pero la nube detecta el borde. -->
@@ -165,21 +165,21 @@
         <param name="yolo_queries" value="['container_drop']"/>
         <!-- Confianza minima para aceptar un bbox de OWLv2 como ROI de busqueda. -->
         <param name="yolo_min_confidence" value="0.20"/>
-        <!-- Pixeles extra alrededor del bbox para no cortar el borde del contenedor. -->
-        <param name="yolo_bbox_padding_px" value="80"/>
+        <!-- Pixeles extra alrededor del bbox para no cortar borde, piso ni interior del contenedor. -->
+        <param name="yolo_bbox_padding_px" value="140"/>
         <!-- Tiempo maximo de espera por bbox antes de caer al metodo geometrico anterior. -->
         <param name="yolo_wait_timeout_sec" value="12.0"/>
         <!-- Si el bbox de OWLv2 recorta demasiado y la geometria falla, descarta la ROI visual tras N intentos. -->
-        <param name="yolo_max_roi_failures" value="3"/>
+        <param name="yolo_max_roi_failures" value="4"/>
         <!-- Pixeles extra agregados en cada intento fallido antes de abandonar la ROI visual. -->
-        <param name="yolo_roi_expand_step_px" value="80"/>
+        <param name="yolo_roi_expand_step_px" value="100"/>
         <!-- Margen en metros para aceptar candidatos cercanos al perimetro visto por OWLv2 cuando se usa nube completa. -->
-        <param name="yolo_gate_margin_m" value="0.12"/>
+        <param name="yolo_gate_margin_m" value="0.18"/>
         <!-- Si OWLv2 falla, permite seguir con la geometria anterior para no bloquear el drop. -->
         <param name="fallback_without_yolo" value="true"/>
         <param name="cluster_tolerance_m" value="0.065"/>
         <param name="min_wall_coverage" value="0.25"/>
-        <param name="max_interior_fill_ratio" value="1.05"/>
+        <param name="max_interior_fill_ratio" value="0.65"/>
         <param name="active_on_start" value="false"/>
     </node>
 
