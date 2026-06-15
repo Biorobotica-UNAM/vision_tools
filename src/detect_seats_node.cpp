@@ -55,7 +55,7 @@ public:
     this->declare_parameter<double>("bbox_timeout_sec", 3.0);
 
     // [DEBUG] parámetro topic de imagen raw para el debug
-    this->declare_parameter<std::string>("image_topic", "hardware/camera/image_raw");
+    this->declare_parameter<std::string>("image_topic", "/hardware/camera/image_raw");
 
     yolo_service_ = this->get_parameter("yolo_service").as_string();
     bbox_to_pose_service_ = this->get_parameter("bbox_to_pose_service").as_string();
