@@ -2,9 +2,10 @@
 <launch>
 
     <arg name="namespace_vision"   default="vision"/>
-    <arg name="model_path"         default="yolo11m.pt"/>
+    <arg name="model_name"         default="yolo11m.pt"/>
     <arg name="image_topic"        default="/hardware/camera/image_raw"/>  <!--/hardware/camera/image_raw && /kinect/image_raw-->
     <arg name="pointcloud_topic"   default="/hardware/camera/points"/>  <!--/hardware/camera/points && /kinect/points--> 
+    <arg name="vacancy_filtered_cloud_topic" default="/$(var namespace_vision)/vacancy/points_filtered"/>
 
     <node
       pkg="yolo_detect"
@@ -12,7 +13,7 @@
       name="yolo_detect_node"
       namespace="$(var namespace_vision)"
       output="screen">
-        <param name="model_path"   value="$(var model_path)"/>
+        <param name="model_name"   value="$(var model_name)"/>
         <param name="image_topic"   value="$(var image_topic)"/>
     </node>
 
@@ -58,6 +59,7 @@
       output="screen">
       <param name="image_topic" value="$(var image_topic)"/>
       <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
+      <!-- OWLv2 reemplaza a YOLO-World para delimitar el contenedor por bbox RGB. -->
     </node>
 
     <node
@@ -80,6 +82,28 @@
 
 
     <node
+      pkg="vacancy_detector"
+      exec="vacancy_cloud_filter_node"
+      name="vacancy_cloud_filter"
+      namespace="$(var namespace_vision)"
+      output="screen">
+        <param name="profile" value="shared"/>
+        <param name="input_topic" value="$(var pointcloud_topic)"/>
+        <param name="output_topic" value="$(var vacancy_filtered_cloud_topic)"/>
+        <param name="active_on_start" value="false"/>
+        <!-- Filtro compartido: conserva organizacion para que el contenedor pueda usar el bbox visual. -->
+        <param name="preserve_organized" value="true"/>
+        <param name="roi_x_min_m" value="0.15"/>
+        <param name="roi_x_max_m" value="1.60"/>
+        <param name="roi_y_min_m" value="-0.85"/>
+        <param name="roi_y_max_m" value="0.85"/>
+        <param name="roi_z_min_m" value="-0.20"/>
+        <param name="roi_z_max_m" value="1.75"/>
+        <param name="input_downsampling" value="1"/>
+        <param name="pause_navigation_on_enable" value="true"/>
+    </node>
+
+    <node
       pkg="table_alignment"
       exec="table_segmenter_node"
       name="table_segmenter_node"
@@ -94,12 +118,24 @@
       name="table_drop_tf_node"
       namespace="$(var namespace_vision)"
       output="screen">
-        <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
+        <param name="pointcloud_topic" value="$(var vacancy_filtered_cloud_topic)"/>
+        <param name="cloud_filter_enable_service" value="/$(var namespace_vision)/vacancy_cloud_filter/enable"/>
         <param name="fixed_frame_id" value="map"/>
         <param name="validation_frame_id" value="base_link"/>
         <param name="table_frame_id" value="table_frame"/>
         <param name="drop_start_frame_id" value="table_drop_start"/>
         <param name="drop_points_file" value="src/Vision/vacancy_detector/src/table_drop_points.txt"/>
+        <!-- Mesa: preferimos un punto cercano al borde frontal y lateralizado hacia el brazo derecho. -->
+        <param name="front_margin_m" value="0.05"/>
+        <param name="obstacle_margin_m" value="0.10"/>
+        <param name="preferred_x_m" value="0.35"/>
+        <param name="preferred_y_m" value="0.08"/>
+        <param name="preferred_point_weight" value="1.20"/>
+        <param name="min_front_edge_points" value="12"/>
+        <param name="min_front_edge_line_inliers" value="8"/>
+        <param name="safe_x_max_m" value="0.80"/>
+        <param name="safe_abs_y_max_m" value="0.55"/>
+        <param name="safe_dist_xy_max_m" value="1.05"/>
         <param name="active_on_start" value="false"/>
     </node>
 
@@ -109,14 +145,18 @@
       name="container_drop_tf_node"
       namespace="$(var namespace_vision)"
       output="screen">
-        <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
+        <param name="pointcloud_topic" value="$(var vacancy_filtered_cloud_topic)"/>
+        <param name="cloud_filter_enable_service" value="/$(var namespace_vision)/vacancy_cloud_filter/enable"/>
         <param name="fixed_frame_id" value="base_link"/>
         <param name="validation_frame_id" value="base_link"/>
         <param name="container_frame_id" value="container_frame"/>
         <param name="drop_start_frame_id" value="container_drop_start"/>
         <param name="drop_points_file" value="src/Vision/vacancy_detector/src/container_drop_points.txt"/>
         <param name="container_min_width_m" value="0.12"/>
-        <param name="container_min_depth_m" value="0.07"/>
+        <param name="container_min_depth_m" value="0.12"/>
+        <param name="partial_rim_min_depth_m" value="0.05"/>
+        <param name="partial_rim_min_points" value="500"/>
+        <param name="partial_rim_drop_x_offset_m" value="0.12"/>
         <param name="object_min_height_m" value="0.25"/>
         <param name="object_max_height_m" value="0.55"/>
         <param name="safe_abs_y_max_m" value="0.42"/>
@@ -124,16 +164,43 @@
         <!-- Altura extra de la esfera/TF sobre el borde detectado de la cubeta. -->
         <param name="start_clearance_m" value="0.0"/>
         <!-- Offset frontal de la esfera/TF. En base_link, +X la mete mas hacia el interior de la cubeta. -->
-        <param name="drop_x_offset_m" value="0.08"/>
+        <param name="drop_x_offset_m" value="0.055"/>
         <!-- Offset lateral relativo. En base_link, +Y mueve la esfera a la izquierda y -Y a la derecha. -->
         <param name="drop_y_offset_m" value="0.0"/>
         <!-- Fuerza la coordenada Y de la esfera/TF cuando la cubeta esta centrada pero la nube detecta el borde. -->
-        <param name="override_drop_y" value="true"/>
+        <param name="override_drop_y" value="false"/>
         <!-- Y absoluto usado si override_drop_y=true; 0.0 deja la esfera al centro del robot. -->
         <param name="drop_y_override_m" value="0.0"/>
+        <!-- Fuerza la altura absoluta de la esfera/TF para que el brazo llegue desde arriba. -->
+        <param name="override_drop_z" value="true"/>
+        <param name="drop_z_override_m" value="1.00"/>
+        <!-- Usa OWLv2 para delimitar la ventana RGB antes de procesar la nube del contenedor. -->
+        <param name="use_yolo_roi" value="true"/>
+        <!-- Servicio GetDetections de OWLv2 bajo el namespace /vision. -->
+        <param name="yolo_service" value="/vision/owl/owlv2_service"/>
+        <!-- Prompts que OWLv2 expande a variantes utiles para contenedores. -->
+        <param name="yolo_queries" value="['container_drop']"/>
+        <!-- Confianza minima para aceptar un bbox de OWLv2 como ROI de busqueda. -->
+        <param name="yolo_min_confidence" value="0.20"/>
+        <!-- Pixeles extra alrededor del bbox para no cortar borde, piso ni interior del contenedor. -->
+        <param name="yolo_bbox_padding_px" value="140"/>
+        <!-- Tiempo maximo de espera por bbox antes de caer al metodo geometrico anterior. -->
+        <param name="yolo_wait_timeout_sec" value="12.0"/>
+        <!-- Si el bbox de OWLv2 recorta demasiado y la geometria falla, descarta la ROI visual tras N intentos. -->
+        <param name="yolo_max_roi_failures" value="4"/>
+        <!-- Pixeles extra agregados en cada intento fallido antes de abandonar la ROI visual. -->
+        <param name="yolo_roi_expand_step_px" value="100"/>
+        <!-- Margen en metros para aceptar candidatos cercanos al perimetro visto por OWLv2 cuando se usa nube completa. -->
+        <param name="yolo_gate_margin_m" value="0.18"/>
+        <!-- Si OWLv2 falla, permite seguir con la geometria anterior para no bloquear el drop. -->
+        <param name="fallback_without_yolo" value="true"/>
         <param name="cluster_tolerance_m" value="0.065"/>
         <param name="min_wall_coverage" value="0.25"/>
-        <param name="max_interior_fill_ratio" value="1.05"/>
+        <param name="max_interior_fill_ratio" value="0.65"/>
+        <!-- Rechaza rapido contenedores claramente llenos para no expandir ROI ni reprocesar nube completa. -->
+        <param name="reject_full_containers" value="true"/>
+        <param name="full_container_fill_ratio" value="0.85"/>
+        <param name="full_container_min_coverage" value="0.30"/>
         <param name="active_on_start" value="false"/>
     </node>
 
@@ -143,12 +210,49 @@
       name="shelf_drop_tf_node"
       namespace="$(var namespace_vision)"
       output="screen">
-        <param name="pointcloud_topic" value="$(var pointcloud_topic)"/>
+        <param name="pointcloud_topic" value="$(var vacancy_filtered_cloud_topic)"/>
+        <param name="cloud_filter_enable_service" value="/$(var namespace_vision)/vacancy_cloud_filter/enable"/>
         <param name="fixed_frame_id" value="map"/>
         <param name="validation_frame_id" value="base_link"/>
         <param name="shelf_frame_id" value="shelf_frame"/>
         <param name="drop_start_frame_id" value="shelf_drop_start"/>
         <param name="drop_points_file" value="src/Vision/vacancy_detector/src/shelf_drop_points.txt"/>
+        <param name="roi_x_min_m" value="0.20"/>
+        <param name="roi_x_max_m" value="1.60"/>
+        <param name="roi_y_min_m" value="-0.85"/>
+        <param name="roi_y_max_m" value="0.85"/>
+        <param name="roi_z_min_m" value="0.25"/>
+        <param name="roi_z_max_m" value="1.75"/>
+        <param name="plane_distance_threshold_m" value="0.025"/>
+        <param name="plane_eps_angle_deg" value="20.0"/>
+        <param name="min_plane_points" value="250"/>
+        <param name="max_horizontal_planes" value="8"/>
+        <param name="min_plane_separation_m" value="0.10"/>
+        <param name="surface_min_width_m" value="0.25"/>
+        <param name="surface_min_depth_m" value="0.18"/>
+        <param name="min_section_height_m" value="0.18"/>
+        <param name="open_section_height_m" value="0.45"/>
+        <!-- -1.0 deja que el nodo elija la mejor seccion; pon una altura z en base_link para preferir una repisa. -->
+        <param name="preferred_section_z_m" value="-1.0"/>
+        <param name="preferred_section_z_weight" value="1.0"/>
+        <!-- 0=automatico; 1=seccion valida mas alta; 2=siguiente; 3=siguiente. -->
+        <param name="preferred_section_rank" value="0"/>
+        <param name="start_height_m" value="0.10"/>
+        <param name="front_margin_m" value="0.15"/>
+        <param name="side_margin_m" value="0.07"/>
+        <param name="back_margin_m" value="0.08"/>
+        <param name="ceiling_margin_m" value="0.10"/>
+        <param name="obstacle_margin_m" value="0.12"/>
+        <param name="obstacle_min_height_m" value="0.035"/>
+        <param name="obstacle_max_height_m" value="0.40"/>
+        <!-- FindSpace lo puede sobrescribir si una mano esta ocupada; 0.0 conserva centro. -->
+        <param name="preferred_y_m" value="0.0"/>
+        <param name="safe_x_min_m" value="0.15"/>
+        <param name="safe_x_max_m" value="1.15"/>
+        <param name="safe_abs_y_max_m" value="0.60"/>
+        <param name="safe_z_min_m" value="0.30"/>
+        <param name="safe_z_max_m" value="1.55"/>
+        <param name="safe_dist_xy_max_m" value="1.30"/>
         <param name="active_on_start" value="false"/>
     </node>
 
