@@ -92,6 +92,7 @@ public:
     std::string coords;
     float z{0.f};
     geometry_msgs::msg::PoseStamped pose;
+    geometry_msgs::msg::PoseStamped nav; // For navigation purposes, may be different from the actual pose due to reachability constraints
   };
 
   bool DetectPersonPose(PersonDetection &out_detection, std::chrono::seconds timeout = 10s);
@@ -108,6 +109,7 @@ public:
   bool GetOwlPose(
     const std::string& object_name,
     geometry_msgs::msg::PoseStamped& pose,
+    geometry_msgs::msg::PoseStamped& nav, // For navigation purposes, may be different from the actual pose due to reachability constraints
     std::string& detected_name,
     std::chrono::seconds timeout = 10s);
 
