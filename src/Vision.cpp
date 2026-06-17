@@ -4,9 +4,11 @@
  */
 
 #include "vision_tools/Vision.hpp"
-#include <vector>
 #include <algorithm>
+#include <cmath>
+#include <sstream>
 #include <thread>
+#include <vector>
 
 using namespace std::chrono_literals;
 
@@ -86,6 +88,36 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
   compare_analize_client_ =
       node_->create_client<vision_interfaces::srv::GetAnalytics>(
           "vision/compare_count", qos, cb_group_clients_);
+}
+
+// helper para navegacion-------------------------------------------------------
+
+static geometry_msgs::msg::PoseStamped
+NavPose(const geometry_msgs::msg::PoseStamped &pose, double offset)
+{
+    double px = pose.pose.position.x;
+    double py = pose.pose.position.y;
+    double dist = std::sqrt(px*px + py*py);
+
+    double nav_x = px, nav_y = py;
+    if (dist > offset) {
+        double ratio = (dist - offset) / dist;
+        nav_x = px * ratio;
+        nav_y = py * ratio;
+    }
+
+    double yaw = std::atan2(py, px);
+
+    geometry_msgs::msg::PoseStamped nav;
+    nav.header = pose.header;
+    nav.pose.position.x = nav_x;
+    nav.pose.position.y = nav_y;
+    nav.pose.position.z = 0.0;
+    nav.pose.orientation.x = 0.0;
+    nav.pose.orientation.y = 0.0;
+    nav.pose.orientation.z = std::sin(yaw / 2);
+    nav.pose.orientation.w = std::cos(yaw / 2);
+    return nav;
 }
 
 // ── DetectByClass ────────────────────────────────────────────────────────────
@@ -293,6 +325,8 @@ bool Vision::DetectPersonPose(
       out_detection.z       = z;
       out_detection.pose    = pose;
 
+      out_detection.nav     = NavPose(pose, 0.7); // Offset de 0.7m para navegación
+
       return true;
     }
 
@@ -420,6 +454,7 @@ Vision::DetectOwlV2(const std::vector<std::string> &queries,
 bool Vision::GetOwlPose(
     const std::string& object_name,
     geometry_msgs::msg::PoseStamped& pose,
+    geometry_msgs::msg::PoseStamped& nav,
     std::string& detected_name,
     std::chrono::seconds timeout)
 {
@@ -511,6 +546,8 @@ bool Vision::GetOwlPose(
         std::max(
             pose.pose.position.z,
             MIN_Z_HEIGHT);
+
+    nav = NavPose(pose, 0.5); // Offset de 0.5m para navegación
 
     return true;
 }
