@@ -6,6 +6,7 @@
  */
 
 #include <chrono>
+#include <future>
 #include <memory>
 #include <string>
 #include <utility>
@@ -52,10 +53,10 @@ public:
 
   bool DetectPerson(const std::string &name,
                     std::string &out_coords, float &out_z,
-                    std::chrono::seconds timeout = 10s);
+                    std::chrono::seconds timeout = 5s);
 
   bool IdentifyPerson(std::string &out_name,
-                      std::chrono::seconds timeout = 10s);
+                      std::chrono::seconds timeout = 5s);
 
   bool DescribePerson(const std::string &name, std::string &out_description,
                       std::chrono::seconds timeout = 10s);
@@ -95,7 +96,7 @@ public:
     geometry_msgs::msg::PoseStamped nav; // For navigation purposes, may be different from the actual pose due to reachability constraints
   };
 
-  bool DetectPersonPose(PersonDetection &out_detection, std::chrono::seconds timeout = 10s);
+  bool DetectPersonPose(PersonDetection &out_detection, std::chrono::seconds timeout = 5s);
 
   struct PointingResult {
     bool human_detected{false};

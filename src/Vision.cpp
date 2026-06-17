@@ -4,8 +4,11 @@
  */
 
 #include "vision_tools/Vision.hpp"
-#include <vector>
 #include <algorithm>
+#include <cmath>
+#include <sstream>
+#include <thread>
+#include <vector>
 
 using namespace std::chrono_literals;
 
@@ -170,10 +173,42 @@ bool Vision::DetectPerson(const std::string &name,
           }
           out_z = response->z;
         }
-        RCLCPP_INFO(node_->get_logger(), "DetectPerson %s: %s",
-                    success ? "OK" : "FAILED", response->name.c_str());
+        // Solo los exitos quedan en INFO. Los fallos por frame sin cara son
+        // DEBUG para no saturar la terminal durante los reintentos de escaneo.
+        if (success && response->bbox.size() >= 4) {
+          RCLCPP_INFO(
+              node_->get_logger(),
+              "DetectPerson %s: name='%s' desc='%s' bbox=[%.1f %.1f %.1f %.1f] z=%.3f",
+              success ? "OK" : "FAILED", response->name.c_str(),
+              response->description.c_str(), response->bbox[0],
+              response->bbox[1], response->bbox[2], response->bbox[3],
+              response->z);
+        } else if (success) {
+          RCLCPP_INFO(node_->get_logger(),
+                      "DetectPerson OK: name='%s' desc='%s' bbox_size=%zu",
+                      response->name.c_str(), response->description.c_str(),
+                      response->bbox.size());
+        } else if (response->bbox.size() >= 4) {
+          RCLCPP_DEBUG(
+              node_->get_logger(),
+              "DetectPerson FAILED: name='%s' desc='%s' bbox=[%.1f %.1f %.1f %.1f] z=%.3f",
+              response->name.c_str(), response->description.c_str(),
+              response->bbox[0], response->bbox[1], response->bbox[2],
+              response->bbox[3], response->z);
+        } else {
+          RCLCPP_DEBUG(node_->get_logger(),
+                       "DetectPerson FAILED: name='%s' desc='%s' bbox_size=%zu",
+                       response->name.c_str(), response->description.c_str(),
+                       response->bbox.size());
+        }
       },
       timeout, "DetectPerson");
+
+  if (!completed) {
+    RCLCPP_ERROR(node_->get_logger(),
+                 "DetectPerson service call did not complete within %ld s",
+                 timeout.count());
+  }
 
   return completed && success;
 }
@@ -186,8 +221,29 @@ bool Vision::DetectPersonPose(
 {
   std::string coords;
   float z = 0.f;
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  int detect_attempt = 0;
 
-  if (!DetectPerson("", coords, z, timeout)) {
+  // DetectPerson se reintenta hasta el deadline de la posicion actual. La
+  // cabeza no se mueve aqui; FindPerson decide el siguiente pan/tilt si esta
+  // ventana termina sin detectar una cara.
+  while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
+    ++detect_attempt;
+    if (DetectPerson("", coords, z, 1s)) {
+      break;
+    }
+
+    RCLCPP_DEBUG(
+        node_->get_logger(),
+        "DetectPersonPose: DetectPerson failed before BboxToPose (attempt %d); retrying",
+        detect_attempt);
+    std::this_thread::sleep_for(200ms);
+  }
+
+  if (coords.empty()) {
+    RCLCPP_WARN(node_->get_logger(),
+                "DetectPersonPose: no face detected within %ld s",
+                timeout.count());
     return false;
   }
 
@@ -230,7 +286,6 @@ bool Vision::DetectPersonPose(
   auto request =
       std::make_shared<vision_interfaces::srv::BboxToPose::Request>();
 
-  request->header.stamp    = node_->now();
   request->header.frame_id = "head_front_camera_rgb_optical_frame";
 
   request->x1 = x1;
@@ -238,35 +293,54 @@ bool Vision::DetectPersonPose(
   request->x2 = x2;
   request->y2 = y2;
 
-  geometry_msgs::msg::PoseStamped pose;
-  bool success = false;
+  int attempt = 0;
 
-  bool completed =
-      call_service<vision_interfaces::srv::BboxToPose>(
-          bbox_to_pose_client_,
-          request,
-          [&](vision_interfaces::srv::BboxToPose::Response::SharedPtr response)
-          {
-            success = response->success;
+  // Si la cara ya fue detectada pero la nube/TF aun no da pose, se reintenta
+  // BboxToPose con el mismo bbox hasta agotar la misma ventana de tiempo.
+  while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
+    ++attempt;
+    request->header.stamp = node_->now();
 
-            if (success) {
-              pose = response->pose;
-            }
-          },
-          timeout,
-          "BboxToPose");
+    geometry_msgs::msg::PoseStamped pose;
+    bool success = false;
 
-  if (!completed || !success) {
-    return false;
+    const bool completed =
+        call_service<vision_interfaces::srv::BboxToPose>(
+            bbox_to_pose_client_,
+            request,
+            [&](vision_interfaces::srv::BboxToPose::Response::SharedPtr response)
+            {
+              success = response->success;
+
+              if (success) {
+                pose = response->pose;
+              }
+            },
+            1s,
+            "BboxToPose");
+
+    if (completed && success) {
+      out_detection.success = true;
+      out_detection.coords  = coords;
+      out_detection.z       = z;
+      out_detection.pose    = pose;
+
+      out_detection.nav     = NavPose(pose, 0.7); // Offset de 0.7m para navegación
+
+      return true;
+    }
+
+    RCLCPP_DEBUG(
+      node_->get_logger(),
+      "DetectPersonPose: BboxToPose failed after face detection (attempt %d); retrying",
+      attempt);
+    std::this_thread::sleep_for(200ms);
   }
 
-  out_detection.success = true;
-  out_detection.coords  = coords;
-  out_detection.z       = z;
-  out_detection.pose    = pose;
-  out_detection.nav     = NavPose(pose, 0.7); // Offset de 0.7m para navegación
-
-  return true;
+  RCLCPP_ERROR(
+    node_->get_logger(),
+    "DetectPersonPose: face detected but BboxToPose never returned a valid pose");
+  return false;
 }
 
 // ── IdentifyPerson ───────────────────────────────────────────────────────────
@@ -286,8 +360,10 @@ bool Vision::IdentifyPerson(std::string &out_name,
         if (success) {
           out_name = response->name;
         }
-        RCLCPP_INFO(node_->get_logger(), "IdentifyPerson %s: %s",
-                    success ? "OK" : "FAILED", response->name.c_str());
+        RCLCPP_INFO(node_->get_logger(),
+                    "IdentifyPerson %s: name='%s' desc='%s'",
+                    success ? "OK" : "FAILED", response->name.c_str(),
+                    response->description.c_str());
       },
       timeout, "IdentifyPerson");
 
@@ -334,8 +410,10 @@ bool Vision::RegisterPerson(const std::string &name,
       register_face_client_, request,
       [&](faces_interfaces::srv::FaceRecog::Response::SharedPtr response) {
         success = response->success;
-        RCLCPP_INFO(node_->get_logger(), "RegisterPerson %s: %s",
-                    success ? "OK" : "FAILED", response->name.c_str());
+        RCLCPP_INFO(node_->get_logger(),
+                    "RegisterPerson %s: name='%s' desc='%s'",
+                    success ? "OK" : "FAILED", response->name.c_str(),
+                    response->description.c_str());
       },
       timeout, "RegisterPerson");
 
@@ -716,5 +794,3 @@ bool Vision::AnalyzeCompare(const std::vector<std::string> &compare_classes,
 
   return completed && success;
 }
-
-
