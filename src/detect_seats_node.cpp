@@ -11,7 +11,17 @@
 #include "vision_interfaces/srv/get_detections.hpp"
 #include "vision_interfaces/msg/yolo_detection.hpp"
 #include "sensor_msgs/msg/image.hpp"
-#include "cv_bridge/cv_bridge.hpp"
+//#include "cv_bridge/cv_bridge.hpp"
+
+#if __has_include(<cv_bridge/cv_bridge.hpp>)
+  #include <cv_bridge/cv_bridge.hpp>
+#elif __has_include(<cv_bridge/cv_bridge.h>)
+  #include <cv_bridge/cv_bridge.h>
+#else
+  #error "cv_bridge header not found"
+#endif
+#include <opencv2/opencv.hpp>
+
 #include <opencv2/opencv.hpp>
 
 using std::placeholders::_1;
