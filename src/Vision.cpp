@@ -325,7 +325,7 @@ bool Vision::DetectPersonPose(
       out_detection.z       = z;
       out_detection.pose    = pose;
 
-      out_detection.nav     = NavPose(pose, 0.7); // Offset de 0.7m para navegación
+      out_detection.nav     = NavPose(pose, 0.5); // Offset de 0.5m para navegación
 
       return true;
     }
@@ -547,7 +547,7 @@ bool Vision::GetOwlPose(
             pose.pose.position.z,
             MIN_Z_HEIGHT);
 
-    nav = NavPose(pose, 0.5); // Offset de 0.5m para navegación
+    nav = NavPose(pose, 0.3); // Offset de 0.3m para navegación
 
     return true;
 }
