@@ -217,8 +217,8 @@
         <param name="shelf_frame_id" value="shelf_frame"/>
         <param name="drop_start_frame_id" value="shelf_drop_start"/>
         <param name="drop_points_file" value="src/Vision/vacancy_detector/src/shelf_drop_points.txt"/>
-        <param name="roi_x_min_m" value="0.20"/>
-        <param name="roi_x_max_m" value="1.60"/>
+        <param name="roi_x_min_m" value="0.30"/>
+        <param name="roi_x_max_m" value="1.20"/>
         <param name="roi_y_min_m" value="-0.85"/>
         <param name="roi_y_max_m" value="0.85"/>
         <param name="roi_z_min_m" value="0.25"/>
@@ -237,7 +237,7 @@
         <param name="preferred_section_z_weight" value="1.0"/>
         <!-- 0=automatico; 1=seccion valida mas alta; 2=siguiente; 3=siguiente. -->
         <param name="preferred_section_rank" value="0"/>
-        <param name="start_height_m" value="0.10"/>
+        <param name="start_height_m" value="0.05"/>
         <param name="front_margin_m" value="0.15"/>
         <param name="side_margin_m" value="0.07"/>
         <param name="back_margin_m" value="0.08"/>
@@ -247,12 +247,12 @@
         <param name="obstacle_max_height_m" value="0.40"/>
         <!-- FindSpace lo puede sobrescribir si una mano esta ocupada; 0.0 conserva centro. -->
         <param name="preferred_y_m" value="0.0"/>
-        <param name="safe_x_min_m" value="0.15"/>
-        <param name="safe_x_max_m" value="1.15"/>
+        <param name="safe_x_min_m" value="0.35"/>
+        <param name="safe_x_max_m" value="0.95"/>
         <param name="safe_abs_y_max_m" value="0.60"/>
         <param name="safe_z_min_m" value="0.30"/>
-        <param name="safe_z_max_m" value="1.55"/>
-        <param name="safe_dist_xy_max_m" value="1.30"/>
+        <param name="safe_z_max_m" value="1.80"/>
+        <param name="safe_dist_xy_max_m" value="1.10"/>
         <param name="active_on_start" value="false"/>
     </node>
 
