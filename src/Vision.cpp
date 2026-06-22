@@ -556,6 +556,83 @@ bool Vision::GetOwlPose(
     return true;
 }
 
+bool Vision::DetectionToNavPose(
+    const YoloDetection& detection,
+    geometry_msgs::msg::PoseStamped& pose,
+    geometry_msgs::msg::PoseStamped& nav,
+    std::chrono::seconds timeout)
+{
+    if (!bbox_to_pose_client_->wait_for_service(1s))
+    {
+        RCLCPP_ERROR(
+            node_->get_logger(),
+            "BboxToPose service not available");
+
+        return false;
+    }
+
+    auto request =
+        std::make_shared<
+            vision_interfaces::srv::BboxToPose::Request>();
+
+    request->header.stamp = node_->now();
+    request->header.frame_id =
+        "head_front_camera_rgb_optical_frame";
+
+    request->x1 = static_cast<int32_t>(detection.x_min);
+    request->y1 = static_cast<int32_t>(detection.y_min);
+    request->x2 = static_cast<int32_t>(detection.x_max);
+    request->y2 = static_cast<int32_t>(detection.y_max);
+
+    bool success = false;
+
+    bool completed =
+        call_service<vision_interfaces::srv::BboxToPose>(
+            bbox_to_pose_client_,
+            request,
+            [&](vision_interfaces::srv::BboxToPose::Response::SharedPtr response)
+            {
+                success = response->success;
+
+                if (success)
+                {
+                    pose = response->pose;
+                    RCLCPP_INFO(
+                        node_->get_logger(),
+                        "DetectionToNavPose OK "
+                        "pos=[%.3f %.3f %.3f] "
+                        "quat=[%.3f %.3f %.3f %.3f]",
+                        pose.pose.position.x,
+                        pose.pose.position.y,
+                        pose.pose.position.z,
+                        pose.pose.orientation.x,
+                        pose.pose.orientation.y,
+                        pose.pose.orientation.z,
+                        pose.pose.orientation.w);
+                }
+            },
+            timeout,
+            "BboxToPose");
+
+    if (!completed || !success)
+    {
+        RCLCPP_WARN(
+            node_->get_logger(),
+            "Failed to compute pose from AnalyzePerson detection bbox");
+
+        return false;
+    }
+
+    pose.pose.position.z =
+        std::max(
+            pose.pose.position.z,
+            MIN_Z_HEIGHT);
+
+    nav = NavPose(pose, 0.3);
+
+    return true;
+}
+
 // ── FindSeat ─────────────────────────────────────────────────────────────────
 
 std::pair<bool, geometry_msgs::msg::PointStamped>
@@ -808,6 +885,8 @@ bool Vision::AnalyzePerson(const std::string &action, const std::string &color,
                            std::string &out_message,
                            std::vector<vision_interfaces::msg::YoloDetection>
                                &out_detections,
+                           bool &out_has_point,
+                           geometry_msgs::msg::PointStamped &out_point,
                            std::chrono::seconds timeout) {
   auto request =
       std::make_shared<vision_interfaces::srv::AnalyzePerson::Request>();
@@ -818,12 +897,17 @@ bool Vision::AnalyzePerson(const std::string &action, const std::string &color,
   request->arm_side = arm_side.empty() ? "any" : arm_side;
 
   bool success = false;
+  out_has_point = false;
+  out_point = geometry_msgs::msg::PointStamped{};
+
   bool completed = call_service<vision_interfaces::srv::AnalyzePerson>(
       analyze_person_client_, request,
       [&](vision_interfaces::srv::AnalyzePerson::Response::SharedPtr response) {
         success = response->success;
         out_message = response->message;
         out_detections = response->detections;
+        out_has_point = response->has_point;
+        out_point = response->point;
         RCLCPP_INFO(node_->get_logger(), "AnalyzePerson [%s] %s: %s",
                     action.c_str(), success ? "OK" : "FAILED",
                     response->message.c_str());
