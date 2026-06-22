@@ -90,6 +90,8 @@ public:
                      const std::string &arm_side,
                      std::string &out_message,
                      std::vector<YoloDetection> &out_detections,
+                     bool &out_has_point,
+                     geometry_msgs::msg::PointStamped &out_point,
                      std::chrono::seconds timeout = 10s);
 
                     
@@ -122,6 +124,12 @@ public:
     geometry_msgs::msg::PoseStamped& nav, // For navigation purposes, may be different from the actual pose due to reachability constraints
     std::string& detected_name,
     std::chrono::seconds timeout = 10s);
+
+  bool DetectionToNavPose(
+    const YoloDetection& detection,
+    geometry_msgs::msg::PoseStamped& pose,
+    geometry_msgs::msg::PoseStamped& nav,
+    std::chrono::seconds timeout = 5s);
 
   static constexpr double MIN_Z_HEIGHT      = 0.5;
 
