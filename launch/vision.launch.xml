@@ -187,7 +187,7 @@
         <!-- Tiempo maximo de espera por bbox antes de caer al metodo geometrico anterior. -->
         <param name="yolo_wait_timeout_sec" value="12.0"/>
         <!-- Si el bbox de OWLv2 recorta demasiado y la geometria falla, descarta la ROI visual tras N intentos. -->
-        <param name="yolo_max_roi_failures" value="4"/>
+        <param name="yolo_max_roi_failures" value="2"/>
         <!-- Pixeles extra agregados en cada intento fallido antes de abandonar la ROI visual. -->
         <param name="yolo_roi_expand_step_px" value="100"/>
         <!-- Margen en metros para aceptar candidatos cercanos al perimetro visto por OWLv2 cuando se usa nube completa. -->
@@ -201,6 +201,16 @@
         <param name="owl_seed_drop_x_offset_m" value="0.0"/>
         <param name="owl_seed_drop_y_offset_m" value="0.0"/>
         <param name="owl_seed_xy_refine_max_m" value="0.12"/>
+        <!-- Refinamiento independiente: deja corregir distancia, pero evita que un cluster lateral arrastre la marca. -->
+        <param name="owl_seed_refine_max_x_m" value="0.12"/>
+        <param name="owl_seed_refine_max_y_m" value="0.03"/>
+        <!-- Ultimo recurso: si la geometria no produce TF, publica una marca centrada en OWLv2 y un poco mas alta. -->
+        <param name="use_owl_seed_final_fallback" value="true"/>
+        <param name="owl_seed_fallback_x_offset_m" value="0.10"/>
+        <param name="owl_seed_pair_fallback_x_offset_m" value="0.0"/>
+        <param name="owl_seed_fallback_y_offset_m" value="0.0"/>
+        <param name="owl_seed_fallback_z_extra_m" value="0.02"/>
+        <param name="owl_seed_pair_max_separation_m" value="0.45"/>
         <!-- Si OWLv2 falla, permite seguir con la geometria anterior para no bloquear el drop. -->
         <param name="fallback_without_yolo" value="true"/>
         <param name="cluster_tolerance_m" value="0.065"/>
