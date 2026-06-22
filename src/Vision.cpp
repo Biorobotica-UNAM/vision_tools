@@ -88,6 +88,10 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
   compare_analize_client_ =
       node_->create_client<vision_interfaces::srv::GetAnalytics>(
           "vision/compare_count", qos, cb_group_clients_);
+
+  analyze_person_client_ =
+      node_->create_client<vision_interfaces::srv::AnalyzePerson>(
+          "/vision/analyze_person", qos, cb_group_clients_);
 }
 
 // helper para navegacion-------------------------------------------------------
@@ -791,6 +795,40 @@ bool Vision::AnalyzeCompare(const std::vector<std::string> &compare_classes,
                     success ? "OK" : "FAILED", response->message.c_str());
       },
       timeout, "AnalyzeCompare");
+
+  return completed && success;
+}
+
+// ── Analyze Person ──────────────────────────────────────────────────────────
+
+bool Vision::AnalyzePerson(const std::string &action, const std::string &color,
+                           const std::string &attribute,
+                           const std::string &gesture_type,
+                           const std::string &arm_side,
+                           std::string &out_message,
+                           std::vector<vision_interfaces::msg::YoloDetection>
+                               &out_detections,
+                           std::chrono::seconds timeout) {
+  auto request =
+      std::make_shared<vision_interfaces::srv::AnalyzePerson::Request>();
+  request->action = action;
+  request->color = color;
+  request->attribute = attribute;
+  request->gesture_type = gesture_type;
+  request->arm_side = arm_side.empty() ? "any" : arm_side;
+
+  bool success = false;
+  bool completed = call_service<vision_interfaces::srv::AnalyzePerson>(
+      analyze_person_client_, request,
+      [&](vision_interfaces::srv::AnalyzePerson::Response::SharedPtr response) {
+        success = response->success;
+        out_message = response->message;
+        out_detections = response->detections;
+        RCLCPP_INFO(node_->get_logger(), "AnalyzePerson [%s] %s: %s",
+                    action.c_str(), success ? "OK" : "FAILED",
+                    response->message.c_str());
+      },
+      timeout, "AnalyzePerson");
 
   return completed && success;
 }
