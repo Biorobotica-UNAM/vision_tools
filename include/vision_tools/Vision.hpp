@@ -21,6 +21,7 @@
 #include "std_srvs/srv/set_bool.hpp"
 #include "vision_interfaces/srv/detect_by_class.hpp"
 #include "vision_interfaces/srv/find_seat.hpp"
+#include "vision_interfaces/srv/analyze_person.hpp"
 #include "vision_interfaces/srv/get_detections.hpp"
 #include "vision_interfaces/srv/bbox_to_pose.hpp"
 #include "vision_interfaces/srv/get_table_alignment.hpp"
@@ -83,6 +84,14 @@ public:
                       std::string &out_winner_class,
                       std::chrono::seconds timeout = 5s);
 
+  bool AnalyzePerson(const std::string &action, const std::string &color,
+                     const std::string &attribute,
+                     const std::string &gesture_type,
+                     const std::string &arm_side,
+                     std::string &out_message,
+                     std::vector<YoloDetection> &out_detections,
+                     std::chrono::seconds timeout = 10s);
+
                     
   // ── Auxiliary ──────────────────────────────────────────────────────────────
 
@@ -144,6 +153,7 @@ private:
   rclcpp::Client<vision_interfaces::srv::GetAnalytics>::SharedPtr size_analize_client_;
   rclcpp::Client<vision_interfaces::srv::GetAnalytics>::SharedPtr color_analize_client_;
   rclcpp::Client<vision_interfaces::srv::GetAnalytics>::SharedPtr compare_analize_client_;
+  rclcpp::Client<vision_interfaces::srv::AnalyzePerson>::SharedPtr analyze_person_client_;
 
   template <typename ServiceT, typename CallbackT>
   bool call_service(
