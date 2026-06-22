@@ -154,7 +154,7 @@
         <param name="drop_points_file" value="src/Vision/vacancy_detector/src/container_drop_points.txt"/>
         <param name="container_min_width_m" value="0.12"/>
         <param name="container_min_depth_m" value="0.12"/>
-        <param name="partial_rim_min_depth_m" value="0.05"/>
+        <param name="partial_rim_min_depth_m" value="0.035"/>
         <param name="partial_rim_min_points" value="500"/>
         <param name="partial_rim_drop_x_offset_m" value="0.12"/>
         <param name="object_min_height_m" value="0.25"/>
@@ -192,14 +192,23 @@
         <param name="yolo_roi_expand_step_px" value="100"/>
         <!-- Margen en metros para aceptar candidatos cercanos al perimetro visto por OWLv2 cuando se usa nube completa. -->
         <param name="yolo_gate_margin_m" value="0.18"/>
+        <!-- Ventana X/Y alrededor de la TF de OWLv2 para evitar elegir otro objeto/borde al expandir ROI. -->
+        <param name="yolo_pose_gate_abs_x_margin_m" value="0.35"/>
+        <!-- Margen lateral respecto a la Y estimada por OWLv2; evita elegir otro borde cuando la ROI se expande. -->
+        <param name="yolo_pose_gate_abs_y_margin_m" value="0.25"/>
+        <!-- Usa la TF de OWLv2 como semilla de drop y deja que la nube solo la refine dentro del maximo indicado. -->
+        <param name="use_owl_pose_seed" value="true"/>
+        <param name="owl_seed_drop_x_offset_m" value="0.0"/>
+        <param name="owl_seed_drop_y_offset_m" value="0.0"/>
+        <param name="owl_seed_xy_refine_max_m" value="0.12"/>
         <!-- Si OWLv2 falla, permite seguir con la geometria anterior para no bloquear el drop. -->
         <param name="fallback_without_yolo" value="true"/>
         <param name="cluster_tolerance_m" value="0.065"/>
         <param name="min_wall_coverage" value="0.25"/>
         <param name="max_interior_fill_ratio" value="0.65"/>
         <!-- Rechaza rapido contenedores claramente llenos para no expandir ROI ni reprocesar nube completa. -->
-        <param name="reject_full_containers" value="true"/>
-        <param name="full_container_fill_ratio" value="0.85"/>
+        <param name="reject_full_containers" value="false"/>
+        <param name="full_container_fill_ratio" value="0.5"/>
         <param name="full_container_min_coverage" value="0.30"/>
         <param name="active_on_start" value="false"/>
     </node>
