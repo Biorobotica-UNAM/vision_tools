@@ -75,19 +75,19 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
 
   count_analize_client_ =
       node_->create_client<vision_interfaces::srv::GetAnalytics>(
-          "vision/count_objects", qos, cb_group_clients_);
-  
+          "/vision/count_objects", qos, cb_group_clients_);
+
   size_analize_client_ =
       node_->create_client<vision_interfaces::srv::GetAnalytics>(
-          "vision/get_by_size", qos, cb_group_clients_);
-  
+          "/vision/get_by_size", qos, cb_group_clients_);
+
   color_analize_client_ =
       node_->create_client<vision_interfaces::srv::GetAnalytics>(
-          "vision/get_by_color", qos, cb_group_clients_);
-  
+          "/vision/get_by_color", qos, cb_group_clients_);
+
   compare_analize_client_ =
       node_->create_client<vision_interfaces::srv::GetAnalytics>(
-          "vision/compare_count", qos, cb_group_clients_);
+          "/vision/compare_count", qos, cb_group_clients_);
 
   analyze_person_client_ =
       node_->create_client<vision_interfaces::srv::AnalyzePerson>(
