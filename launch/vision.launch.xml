@@ -165,6 +165,10 @@
         <param name="start_clearance_m" value="0.0"/>
         <!-- Offset frontal de la esfera/TF. En base_link, +X la mete mas hacia el interior de la cubeta. -->
         <param name="drop_x_offset_m" value="0.055"/>
+        <!-- Favorece el borde mas cercano al robot: drop_x = borde_cercano_x + inset. -->
+        <param name="prefer_near_edge_drop" value="true"/>
+        <param name="near_edge_drop_inset_m" value="0.10"/>
+        <param name="preserve_near_edge_drop_x" value="true"/>
         <!-- Offset lateral relativo. En base_link, +Y mueve la esfera a la izquierda y -Y a la derecha. -->
         <param name="drop_y_offset_m" value="0.0"/>
         <!-- Fuerza la coordenada Y de la esfera/TF cuando la cubeta esta centrada pero la nube detecta el borde. -->
