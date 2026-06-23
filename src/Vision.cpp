@@ -710,10 +710,11 @@ Vision::PointingResult Vision::DetectPointing(std::chrono::seconds timeout)
 
 // ── GetTableAlignment ────────────────────────────────────────────────────────
 
-double Vision::GetTableAlignment(std::chrono::seconds timeout)
+double Vision::GetTableAlignment(bool is_round, std::chrono::seconds timeout)
 {
   auto request =
       std::make_shared<vision_interfaces::srv::GetTableAlignment::Request>();
+  request->is_round = is_round;
 
   double angle = 0.0;
   bool success = false;

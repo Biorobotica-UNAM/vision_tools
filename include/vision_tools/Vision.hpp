@@ -133,7 +133,7 @@ public:
 
   static constexpr double MIN_Z_HEIGHT      = 0.5;
 
-  double GetTableAlignment(std::chrono::seconds timeout = 1s);
+  double GetTableAlignment(bool is_round = false, std::chrono::seconds timeout = 1s);
 
   bool Focus(bool enable, std::chrono::seconds timeout = 5s);
 
