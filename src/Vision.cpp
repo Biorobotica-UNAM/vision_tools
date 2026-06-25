@@ -92,6 +92,10 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
   analyze_person_client_ =
       node_->create_client<vision_interfaces::srv::AnalyzePerson>(
           "/vision/analyze_person", qos, cb_group_clients_);
+
+  cloth_detect_client_ =
+      node_->create_client<vision_interfaces::srv::GetDetections>(
+          "/vision/detection", qos, cb_group_clients_);
 }
 
 // helper para navegacion-------------------------------------------------------
@@ -875,6 +879,91 @@ bool Vision::AnalyzeCompare(const std::vector<std::string> &compare_classes,
       timeout, "AnalyzeCompare");
 
   return completed && success;
+}
+
+// ── GetClothKeypoints ────────────────────────────────────────────────────────
+
+bool Vision::GetClothKeypoints(ClothKeypoints & out_kp,
+                               std::chrono::seconds timeout)
+{
+  static const std::vector<std::string> QUERIES = {
+    "shirt/blouse", "top/t-shirt/sweatshirt", "sweater",
+    "cardigan", "jacket", "vest", "pants", "shorts",
+    "skirt", "coat", "dress", "jumpsuit",
+    "cape", "tights/stockings", "leg warmer", "sock"
+  };
+
+  auto req = std::make_shared<vision_interfaces::srv::GetDetections::Request>();
+  req->queries = QUERIES;
+
+  YoloDetection best;
+  bool found = false;
+
+  call_service<vision_interfaces::srv::GetDetections>(
+      cloth_detect_client_, req,
+      [&](vision_interfaces::srv::GetDetections::Response::SharedPtr resp) {
+        if (!resp->success || resp->detections.empty()) return;
+        best = *std::max_element(
+            resp->detections.begin(), resp->detections.end(),
+            [](const YoloDetection & a, const YoloDetection & b) {
+              return (a.x_max - a.x_min) * (a.y_max - a.y_min)
+                   < (b.x_max - b.x_min) * (b.y_max - b.y_min);
+            });
+        found = true;
+      },
+      timeout, "GetClothKeypoints/YOLO");
+
+  if (!found) return false;
+
+  const double xmin = best.x_min, xmax = best.x_max;
+  const double ymin = best.y_min, ymax = best.y_max;
+  const double w = xmax - xmin, h = ymax - ymin;
+  const double uc = (xmin + xmax) / 2.0;
+  const double vc = (ymin + ymax) / 2.0;
+  const double mx = w * 0.05, my = h * 0.10;
+
+  struct Px { int x1, y1, x2, y2; };
+  auto patch = [](double u, double v, int r = 5) -> Px {
+    return {(int)u - r, (int)v - r, (int)u + r, (int)v + r};
+  };
+
+  std::array<std::pair<Px, geometry_msgs::msg::PointStamped *>, 5> kps = {{
+    {patch(xmin,      ymin + 0.75 * h), &out_kp.left_sleeve},
+    {patch(xmax,      ymin + 0.75 * h), &out_kp.right_sleeve},
+    {patch(xmin + mx, ymax - my),       &out_kp.bottom_left},
+    {patch(xmax - mx, ymax - my),       &out_kp.bottom_right},
+    {patch(uc,        vc),              &out_kp.center},
+  }};
+
+  for (auto & [px, out_pt] : kps) {
+    auto breq = std::make_shared<vision_interfaces::srv::BboxToPose::Request>();
+    breq->header.frame_id = "head_front_camera_rgb_optical_frame";
+    breq->header.stamp = node_->now();
+    breq->x1 = px.x1; breq->y1 = px.y1;
+    breq->x2 = px.x2; breq->y2 = px.y2;
+
+    bool ok = false;
+    call_service<vision_interfaces::srv::BboxToPose>(
+        bbox_to_pose_client_, breq,
+        [&](vision_interfaces::srv::BboxToPose::Response::SharedPtr resp) {
+          if (resp->success) {
+            out_pt->header = resp->pose.header;
+            out_pt->point  = resp->pose.pose.position;
+            ok = true;
+          }
+        },
+        timeout, "GetClothKeypoints/BboxToPose");
+
+    if (!ok) return false;
+  }
+
+  RCLCPP_INFO(node_->get_logger(),
+    "GetClothKeypoints OK — L-sleeve(%.2f,%.2f,%.2f)",
+    out_kp.left_sleeve.point.x,
+    out_kp.left_sleeve.point.y,
+    out_kp.left_sleeve.point.z);
+
+  return true;
 }
 
 // ── Analyze Person ──────────────────────────────────────────────────────────

@@ -118,6 +118,17 @@ public:
 
   PointingResult DetectPointing(std::chrono::seconds timeout = 10s);
 
+  struct ClothKeypoints {
+    geometry_msgs::msg::PointStamped left_sleeve;
+    geometry_msgs::msg::PointStamped right_sleeve;
+    geometry_msgs::msg::PointStamped bottom_left;
+    geometry_msgs::msg::PointStamped bottom_right;
+    geometry_msgs::msg::PointStamped center;
+  };
+
+  bool GetClothKeypoints(ClothKeypoints & out_kp,
+                         std::chrono::seconds timeout = 5s);
+
   bool GetOwlPose(
     const std::string& object_name,
     geometry_msgs::msg::PoseStamped& pose,
@@ -162,6 +173,7 @@ private:
   rclcpp::Client<vision_interfaces::srv::GetAnalytics>::SharedPtr color_analize_client_;
   rclcpp::Client<vision_interfaces::srv::GetAnalytics>::SharedPtr compare_analize_client_;
   rclcpp::Client<vision_interfaces::srv::AnalyzePerson>::SharedPtr analyze_person_client_;
+  rclcpp::Client<vision_interfaces::srv::GetDetections>::SharedPtr cloth_detect_client_;
 
   template <typename ServiceT, typename CallbackT>
   bool call_service(
