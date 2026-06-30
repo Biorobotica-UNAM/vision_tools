@@ -351,14 +351,22 @@ private:
     candidates.reserve(3);
 
     const double width = seat_msg.x_max - seat_msg.x_min;
+    const double armrest_margin = width * 0.10; //10% en los extremos del bbox
+    const double usable_x_min = seat_msg.x_min + armrest_margin;
+    const double usable_x_max = seat_msg.x_max - armrest_margin;
+    const double usable_width = usable_x_max - usable_x_min;
     const char * labels[3] = {"COUCH_L", "COUCH_C", "COUCH_R"};
+
+    if (usable_width <= 0.0) {
+      return candidates;
+    }
 
     for (int i = 0; i < 3; ++i) {
       auto segment = seat_msg;
-      segment.x_min = seat_msg.x_min + width * static_cast<double>(i) / 3.0;
+      segment.x_min = usable_x_min + usable_width * static_cast<double>(i) / 3.0;
       segment.x_max = (i == 2)
-        ? seat_msg.x_max
-        : seat_msg.x_min + width * static_cast<double>(i + 1) / 3.0;
+        ? usable_x_max
+        : usable_x_min + usable_width * static_cast<double>(i + 1) / 3.0;
 
       if (segment.x_max > segment.x_min) {
         candidates.push_back(SeatCandidate{segment, labels[i]});
