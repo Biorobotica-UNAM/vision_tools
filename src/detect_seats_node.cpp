@@ -4,6 +4,7 @@
 #include <chrono>
 #include <algorithm>
 #include <optional>
+#include <mutex>
 
 #include "rclcpp/rclcpp.hpp"
 #include "vision_interfaces/srv/find_seat.hpp"
@@ -11,6 +12,7 @@
 #include "vision_interfaces/srv/get_detections.hpp"
 #include "vision_interfaces/msg/yolo_detection.hpp"
 #include "sensor_msgs/msg/image.hpp"
+#include "std_msgs/msg/header.hpp"
 //#include "cv_bridge/cv_bridge.hpp"
 
 #if __has_include(<cv_bridge/cv_bridge.hpp>)
@@ -26,7 +28,7 @@ using std::placeholders::_1;
 using std::placeholders::_2;
 using namespace std::chrono_literals;
 
-//stable version seat detection node: detect_seats_node.cpp
+//stable version seat detection node: detect_seats_node.cpp for robocup
 class DetectSeatsNode : public rclcpp::Node
 {
 public:
@@ -45,8 +47,8 @@ public:
     this->declare_parameter<std::string>("bbox_to_pose_service", "bbox_to_pose");
     this->declare_parameter<std::string>("find_seat_service", "find_seat");
 
-    this->declare_parameter<double>("seat_conf_threshold", 0.7);
-    this->declare_parameter<double>("person_conf_threshold", 0.5);
+    this->declare_parameter<double>("seat_conf_threshold", 0.6);
+    this->declare_parameter<double>("person_conf_threshold", 0.6);
     this->declare_parameter<double>("min_seat_bbox_area", 3000.0);
     this->declare_parameter<double>("seat_person_overlap_threshold", 0.30);
 
@@ -90,7 +92,10 @@ public:
     std::string image_topic = this->get_parameter("image_topic").as_string();
     image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
       image_topic, 10,
-      [this](const sensor_msgs::msg::Image::SharedPtr msg) { last_image_ = msg; },
+      [this](const sensor_msgs::msg::Image::SharedPtr msg) {
+        std::lock_guard<std::mutex> lock(image_mutex_);
+        last_image_ = msg;
+      },
       sub_options_);
 
     rclcpp::QoS debug_qos(1);
@@ -106,7 +111,12 @@ private:
 
   struct SeatInfo{
     geometry_msgs::msg::Point point;
-    std::string frame_id;
+    std_msgs::msg::Header header;
+  };
+
+  struct SeatCandidate{
+    vision_interfaces::msg::YoloDetection bbox;
+    std::string label;
   };
 
   void handleFindSeat(
@@ -129,7 +139,7 @@ private:
     }
 
     // =====================================
-    // 1. Get detections from YOLO
+    // Get detections from YOLO
     // =====================================
     auto yolo_req = std::make_shared<vision_interfaces::srv::GetDetections::Request>();
     yolo_req->queries = {"person", "chair", "couch"};
@@ -149,7 +159,7 @@ private:
     }
 
     // =====================================
-    // 2. Split detections
+    // Split detections
     // =====================================
     std::vector<vision_interfaces::msg::YoloDetection> persons;
     std::vector<vision_interfaces::msg::YoloDetection> seats;
@@ -173,15 +183,41 @@ private:
     }
 
     // =====================================
-    // 3. Evaluate free seats
+    // Evaluate free seats
     // =====================================
+    std::vector<SeatCandidate> seat_candidates;
     std::vector<SeatInfo> free_seats;
+
+    for (const auto & seat_msg : seats) {
+      const double width = seat_msg.x_max - seat_msg.x_min;
+      const double height = seat_msg.y_max - seat_msg.y_min;
+      const double area = width * height;
+
+      if (width <= 0.0 || height <= 0.0 || area < min_seat_bbox_area_) {
+        continue;
+      }
+
+      auto candidates = buildSeatCandidates(seat_msg);
+      seat_candidates.insert(seat_candidates.end(), candidates.begin(), candidates.end());
+    }
+
+    if (seat_candidates.empty()) {
+      res->success = false;
+      res->message = "No valid seat candidates detected";
+      return;
+    }
+
+    sensor_msgs::msg::Image::SharedPtr image_snapshot;
+    {
+      std::lock_guard<std::mutex> lock(image_mutex_);
+      image_snapshot = last_image_;
+    }
 
     cv::Mat debug_img;
     bool has_debug_img = false;
-    if (last_image_) {
+    if (image_snapshot) {
       try {
-        auto cv_ptr = cv_bridge::toCvCopy(last_image_, "rgb8");
+        auto cv_ptr = cv_bridge::toCvCopy(image_snapshot, "rgb8");
         debug_img = cv_ptr->image.clone();
         has_debug_img = true;
       } catch (...) {
@@ -189,14 +225,10 @@ private:
       }
     }
 
-    for (const auto & seat_msg : seats) {
+    for (const auto & candidate : seat_candidates) {
+      const auto & seat_msg = candidate.bbox;
       const double width = seat_msg.x_max - seat_msg.x_min;
       const double height = seat_msg.y_max - seat_msg.y_min;
-      const double area = width * height;
-
-      if (area < min_seat_bbox_area_) {
-        continue;
-      }
 
       bool occupied = false;
       for (const auto & person_msg : persons) {
@@ -213,7 +245,7 @@ private:
           static_cast<int>(width),
           static_cast<int>(height));
         cv::Scalar color = occupied ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 0);
-        std::string label = occupied ? "OCCUPIED" : "FREE";
+        std::string label = candidate.label + (occupied ? " OCCUPIED" : " FREE");
         cv::rectangle(debug_img, seat_rect, color, 2);
         cv::putText(debug_img, label,
           cv::Point(seat_rect.x, seat_rect.y - 6),
@@ -243,12 +275,12 @@ private:
           cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 0, 0), 2);
       }
 
-      auto out_msg = cv_bridge::CvImage(last_image_->header, "rgb8", debug_img).toImageMsg();
+      auto out_msg = cv_bridge::CvImage(image_snapshot->header, "rgb8", debug_img).toImageMsg();
       debug_image_pub_->publish(*out_msg);
     }
 
     // =====================================
-    // 4. Pick nearest free seat
+    // Pick nearest free seat
     // =====================================
     if (free_seats.empty()) {
       res->success = false;
@@ -266,8 +298,7 @@ private:
 
     res->success = true;
     res->message = "Free seat found";
-    res->point.header.frame_id = best_it->frame_id;
-    res->point.header.stamp = this->now();
+    res->point.header = best_it->header;
     res->point.point = best_it->point;
 
     RCLCPP_INFO(
@@ -297,8 +328,36 @@ private:
 
     SeatInfo info;
     info.point = bbox_res->pose.pose.position;
-    info.frame_id = bbox_res->pose.header.frame_id;
+    info.header = bbox_res->pose.header;
     return info;
+  }
+
+  static std::vector<SeatCandidate> buildSeatCandidates(
+    const vision_interfaces::msg::YoloDetection & seat_msg)
+  {
+    if (seat_msg.class_name != "couch") {
+      return {SeatCandidate{seat_msg, "CHAIR"}};
+    }
+
+    std::vector<SeatCandidate> candidates;
+    candidates.reserve(3);
+
+    const double width = seat_msg.x_max - seat_msg.x_min;
+    const char * labels[3] = {"COUCH_L", "COUCH_C", "COUCH_R"};
+
+    for (int i = 0; i < 3; ++i) {
+      auto segment = seat_msg;
+      segment.x_min = seat_msg.x_min + width * static_cast<double>(i) / 3.0;
+      segment.x_max = (i == 2)
+        ? seat_msg.x_max
+        : seat_msg.x_min + width * static_cast<double>(i + 1) / 3.0;
+
+      if (segment.x_max > segment.x_min) {
+        candidates.push_back(SeatCandidate{segment, labels[i]});
+      }
+    }
+
+    return candidates;
   }
 
   static double calculateSeatOverlap(
@@ -348,6 +407,7 @@ private:
   double bbox_timeout_sec_;
 
   // DEBUG
+  std::mutex image_mutex_;
   sensor_msgs::msg::Image::SharedPtr last_image_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_image_pub_;
