@@ -89,9 +89,9 @@ public:
       rmw_qos_profile_services_default, cb_group_);
 
     // [DEBUG] subscriber de imagen raw + publisher de imagen debug
-    std::string image_topic = this->get_parameter("image_topic").as_string();
+    image_topic_ = this->get_parameter("image_topic").as_string();
     image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-      image_topic, 10,
+      image_topic_, 10,
       [this](const sensor_msgs::msg::Image::SharedPtr msg) {
         std::lock_guard<std::mutex> lock(image_mutex_);
         last_image_ = msg;
@@ -104,7 +104,10 @@ public:
     debug_image_pub_ = this->create_publisher<sensor_msgs::msg::Image>(
       "/vision/detect_seats/debug_image", debug_qos);
 
-    RCLCPP_INFO(this->get_logger(), "Detect seats node started.");
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Detect seats node started. debug image source=%s",
+      image_topic_.c_str());
   }
 
 private:
@@ -223,6 +226,11 @@ private:
       } catch (...) {
         RCLCPP_WARN(this->get_logger(), "[DEBUG] No se pudo convertir imagen para debug");
       }
+    } else {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "[DEBUG] No image received yet on %s; debug image will not be published",
+        image_topic_.c_str());
     }
 
     for (const auto & candidate : seat_candidates) {
@@ -396,6 +404,7 @@ private:
   std::string yolo_service_;
   std::string bbox_to_pose_service_;
   std::string find_seat_service_;
+  std::string image_topic_;
 
   double seat_conf_threshold_;
   double person_conf_threshold_;

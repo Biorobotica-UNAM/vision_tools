@@ -23,6 +23,7 @@
       name="detect_seats_node"
       namespace="$(var namespace_vision)"
       output="screen">
+        <param name="image_topic"   value="$(var image_topic)"/>
     </node>
 
     <node
