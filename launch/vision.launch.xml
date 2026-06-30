@@ -279,7 +279,7 @@
         <param name="active_on_start" value="false"/>
     </node>
 
-<!--
+
     <node
       pkg="vision_tools"
       exec="image_fixed_node"
@@ -287,5 +287,5 @@
       namespace="$(var namespace_vision)"
       output="screen">
     </node>
--->
+
 </launch>
