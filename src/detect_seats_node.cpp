@@ -22,8 +22,6 @@
 #endif
 #include <opencv2/opencv.hpp>
 
-#include <opencv2/opencv.hpp>
-
 using std::placeholders::_1;
 using std::placeholders::_2;
 using namespace std::chrono_literals;
