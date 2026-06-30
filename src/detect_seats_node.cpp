@@ -30,7 +30,7 @@ using std::placeholders::_1;
 using std::placeholders::_2;
 using namespace std::chrono_literals;
 
-//stable version seat detection node: detect_seats_node.cpp
+//stable version seat detection node: detect_seats_node.cpp for robocup
 class DetectSeatsNode : public rclcpp::Node
 {
 public:
