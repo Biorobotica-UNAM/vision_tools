@@ -4,8 +4,11 @@
  */
 
 #include "vision_tools/Vision.hpp"
-#include <vector>
 #include <algorithm>
+#include <cmath>
+#include <sstream>
+#include <thread>
+#include <vector>
 
 using namespace std::chrono_literals;
 
@@ -70,6 +73,55 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
       node_->create_client<std_srvs::srv::SetBool>(
           "/vision/focus", qos, cb_group_clients_);
 
+  count_analize_client_ =
+      node_->create_client<vision_interfaces::srv::GetAnalytics>(
+          "/vision/count_objects", qos, cb_group_clients_);
+
+  size_analize_client_ =
+      node_->create_client<vision_interfaces::srv::GetAnalytics>(
+          "/vision/get_by_size", qos, cb_group_clients_);
+
+  color_analize_client_ =
+      node_->create_client<vision_interfaces::srv::GetAnalytics>(
+          "/vision/get_by_color", qos, cb_group_clients_);
+
+  compare_analize_client_ =
+      node_->create_client<vision_interfaces::srv::GetAnalytics>(
+          "/vision/compare_count", qos, cb_group_clients_);
+
+  analyze_person_client_ =
+      node_->create_client<vision_interfaces::srv::AnalyzePerson>(
+          "/vision/analyze_person", qos, cb_group_clients_);
+}
+
+// helper para navegacion-------------------------------------------------------
+
+static geometry_msgs::msg::PoseStamped
+NavPose(const geometry_msgs::msg::PoseStamped &pose, double offset)
+{
+    double px = pose.pose.position.x;
+    double py = pose.pose.position.y;
+    double dist = std::sqrt(px*px + py*py);
+
+    double nav_x = px, nav_y = py;
+    if (dist > offset) {
+        double ratio = (dist - offset) / dist;
+        nav_x = px * ratio;
+        nav_y = py * ratio;
+    }
+
+    double yaw = std::atan2(py, px);
+
+    geometry_msgs::msg::PoseStamped nav;
+    nav.header = pose.header;
+    nav.pose.position.x = nav_x;
+    nav.pose.position.y = nav_y;
+    nav.pose.position.z = 0.0;
+    nav.pose.orientation.x = 0.0;
+    nav.pose.orientation.y = 0.0;
+    nav.pose.orientation.z = std::sin(yaw / 2);
+    nav.pose.orientation.w = std::cos(yaw / 2);
+    return nav;
 }
 
 // ── DetectByClass ────────────────────────────────────────────────────────────
@@ -125,10 +177,42 @@ bool Vision::DetectPerson(const std::string &name,
           }
           out_z = response->z;
         }
-        RCLCPP_INFO(node_->get_logger(), "DetectPerson %s: %s",
-                    success ? "OK" : "FAILED", response->name.c_str());
+        // Solo los exitos quedan en INFO. Los fallos por frame sin cara son
+        // DEBUG para no saturar la terminal durante los reintentos de escaneo.
+        if (success && response->bbox.size() >= 4) {
+          RCLCPP_INFO(
+              node_->get_logger(),
+              "DetectPerson %s: name='%s' desc='%s' bbox=[%.1f %.1f %.1f %.1f] z=%.3f",
+              success ? "OK" : "FAILED", response->name.c_str(),
+              response->description.c_str(), response->bbox[0],
+              response->bbox[1], response->bbox[2], response->bbox[3],
+              response->z);
+        } else if (success) {
+          RCLCPP_INFO(node_->get_logger(),
+                      "DetectPerson OK: name='%s' desc='%s' bbox_size=%zu",
+                      response->name.c_str(), response->description.c_str(),
+                      response->bbox.size());
+        } else if (response->bbox.size() >= 4) {
+          RCLCPP_DEBUG(
+              node_->get_logger(),
+              "DetectPerson FAILED: name='%s' desc='%s' bbox=[%.1f %.1f %.1f %.1f] z=%.3f",
+              response->name.c_str(), response->description.c_str(),
+              response->bbox[0], response->bbox[1], response->bbox[2],
+              response->bbox[3], response->z);
+        } else {
+          RCLCPP_DEBUG(node_->get_logger(),
+                       "DetectPerson FAILED: name='%s' desc='%s' bbox_size=%zu",
+                       response->name.c_str(), response->description.c_str(),
+                       response->bbox.size());
+        }
       },
       timeout, "DetectPerson");
+
+  if (!completed) {
+    RCLCPP_ERROR(node_->get_logger(),
+                 "DetectPerson service call did not complete within %ld s",
+                 timeout.count());
+  }
 
   return completed && success;
 }
@@ -141,8 +225,29 @@ bool Vision::DetectPersonPose(
 {
   std::string coords;
   float z = 0.f;
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  int detect_attempt = 0;
 
-  if (!DetectPerson("", coords, z, timeout)) {
+  // DetectPerson se reintenta hasta el deadline de la posicion actual. La
+  // cabeza no se mueve aqui; FindPerson decide el siguiente pan/tilt si esta
+  // ventana termina sin detectar una cara.
+  while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
+    ++detect_attempt;
+    if (DetectPerson("", coords, z, 1s)) {
+      break;
+    }
+
+    RCLCPP_DEBUG(
+        node_->get_logger(),
+        "DetectPersonPose: DetectPerson failed before BboxToPose (attempt %d); retrying",
+        detect_attempt);
+    std::this_thread::sleep_for(200ms);
+  }
+
+  if (coords.empty()) {
+    RCLCPP_WARN(node_->get_logger(),
+                "DetectPersonPose: no face detected within %ld s",
+                timeout.count());
     return false;
   }
 
@@ -185,7 +290,6 @@ bool Vision::DetectPersonPose(
   auto request =
       std::make_shared<vision_interfaces::srv::BboxToPose::Request>();
 
-  request->header.stamp    = node_->now();
   request->header.frame_id = "head_front_camera_rgb_optical_frame";
 
   request->x1 = x1;
@@ -193,34 +297,54 @@ bool Vision::DetectPersonPose(
   request->x2 = x2;
   request->y2 = y2;
 
-  geometry_msgs::msg::PoseStamped pose;
-  bool success = false;
+  int attempt = 0;
 
-  bool completed =
-      call_service<vision_interfaces::srv::BboxToPose>(
-          bbox_to_pose_client_,
-          request,
-          [&](vision_interfaces::srv::BboxToPose::Response::SharedPtr response)
-          {
-            success = response->success;
+  // Si la cara ya fue detectada pero la nube/TF aun no da pose, se reintenta
+  // BboxToPose con el mismo bbox hasta agotar la misma ventana de tiempo.
+  while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
+    ++attempt;
+    request->header.stamp = node_->now();
 
-            if (success) {
-              pose = response->pose;
-            }
-          },
-          timeout,
-          "BboxToPose");
+    geometry_msgs::msg::PoseStamped pose;
+    bool success = false;
 
-  if (!completed || !success) {
-    return false;
+    const bool completed =
+        call_service<vision_interfaces::srv::BboxToPose>(
+            bbox_to_pose_client_,
+            request,
+            [&](vision_interfaces::srv::BboxToPose::Response::SharedPtr response)
+            {
+              success = response->success;
+
+              if (success) {
+                pose = response->pose;
+              }
+            },
+            1s,
+            "BboxToPose");
+
+    if (completed && success) {
+      out_detection.success = true;
+      out_detection.coords  = coords;
+      out_detection.z       = z;
+      out_detection.pose    = pose;
+
+      out_detection.nav     = NavPose(pose, 0.5); // Offset de 0.5m para navegación
+
+      return true;
+    }
+
+    RCLCPP_DEBUG(
+      node_->get_logger(),
+      "DetectPersonPose: BboxToPose failed after face detection (attempt %d); retrying",
+      attempt);
+    std::this_thread::sleep_for(200ms);
   }
 
-  out_detection.success = true;
-  out_detection.coords  = coords;
-  out_detection.z       = z;
-  out_detection.pose    = pose;
-
-  return true;
+  RCLCPP_ERROR(
+    node_->get_logger(),
+    "DetectPersonPose: face detected but BboxToPose never returned a valid pose");
+  return false;
 }
 
 // ── IdentifyPerson ───────────────────────────────────────────────────────────
@@ -240,8 +364,10 @@ bool Vision::IdentifyPerson(std::string &out_name,
         if (success) {
           out_name = response->name;
         }
-        RCLCPP_INFO(node_->get_logger(), "IdentifyPerson %s: %s",
-                    success ? "OK" : "FAILED", response->name.c_str());
+        RCLCPP_INFO(node_->get_logger(),
+                    "IdentifyPerson %s: name='%s' desc='%s'",
+                    success ? "OK" : "FAILED", response->name.c_str(),
+                    response->description.c_str());
       },
       timeout, "IdentifyPerson");
 
@@ -288,8 +414,10 @@ bool Vision::RegisterPerson(const std::string &name,
       register_face_client_, request,
       [&](faces_interfaces::srv::FaceRecog::Response::SharedPtr response) {
         success = response->success;
-        RCLCPP_INFO(node_->get_logger(), "RegisterPerson %s: %s",
-                    success ? "OK" : "FAILED", response->name.c_str());
+        RCLCPP_INFO(node_->get_logger(),
+                    "RegisterPerson %s: name='%s' desc='%s'",
+                    success ? "OK" : "FAILED", response->name.c_str(),
+                    response->description.c_str());
       },
       timeout, "RegisterPerson");
 
@@ -307,12 +435,14 @@ Vision::DetectOwlV2(const std::vector<std::string> &queries,
   request->queries = queries;
 
   std::pair<bool, std::vector<Vision::YoloDetection>> result{false, {}};
+  last_owl_header_ = std_msgs::msg::Header{};  // reset por si esta llamada falla
 
   bool completed = call_service<vision_interfaces::srv::GetDetections>(
       owl_v2_client_, request,
       [&](vision_interfaces::srv::GetDetections::Response::SharedPtr response) {
         result.first  = response->success;
         result.second = response->detections;
+        last_owl_header_ = response->header;   // ← stamp real del frame de captura
         RCLCPP_INFO(node_->get_logger(),
                     "DetectOwlV2 %s: %zu detection(s). %s",
                     result.first ? "OK" : "FAILED",
@@ -330,6 +460,7 @@ Vision::DetectOwlV2(const std::vector<std::string> &queries,
 bool Vision::GetOwlPose(
     const std::string& object_name,
     geometry_msgs::msg::PoseStamped& pose,
+    geometry_msgs::msg::PoseStamped& nav,
     std::string& detected_name,
     std::chrono::seconds timeout)
 {
@@ -337,11 +468,6 @@ bool Vision::GetOwlPose(
 
     if (!result.first || result.second.empty())
         return false;
-
-    // Tomar mejor detección
-    const auto& det = result.second[0];
-
-    detected_name = det.class_name;
 
     // Verificar servicio
     if (!bbox_to_pose_client_->wait_for_service(1s))
@@ -353,28 +479,114 @@ bool Vision::GetOwlPose(
         return false;
     }
 
-    // Crear request
+    for (const auto& det : result.second)
+    {
+        auto request =
+            std::make_shared<
+                vision_interfaces::srv::BboxToPose::Request>();
+
+        request->header.stamp = last_owl_header_.stamp;
+        request->header.frame_id =
+            "head_front_camera_rgb_optical_frame";
+
+        request->x1 = static_cast<int32_t>(det.x_min);
+        request->y1 = static_cast<int32_t>(det.y_min);
+        request->x2 = static_cast<int32_t>(det.x_max);
+        request->y2 = static_cast<int32_t>(det.y_max);
+
+        bool success = false;
+
+        bool completed =
+            call_service<vision_interfaces::srv::BboxToPose>(
+                bbox_to_pose_client_,
+                request,
+                [&](vision_interfaces::srv::BboxToPose::Response::SharedPtr response)
+                {
+                    success = response->success;
+
+                    if (success)
+                    {
+                        pose = response->pose;
+
+                        RCLCPP_INFO(
+                            node_->get_logger(),
+                            "BboxToPose OK for '%s' "
+                            "pos=[%.3f %.3f %.3f] "
+                            "quat=[%.3f %.3f %.3f %.3f]",
+                            det.class_name.c_str(),
+                            pose.pose.position.x,
+                            pose.pose.position.y,
+                            pose.pose.position.z,
+                            pose.pose.orientation.x,
+                            pose.pose.orientation.y,
+                            pose.pose.orientation.z,
+                            pose.pose.orientation.w);
+                    }
+                },
+                timeout,
+                "BboxToPose");
+
+        if (!completed)
+        {
+            return false;
+        }
+
+        if (success)
+        {
+            detected_name = det.class_name;
+
+            pose.pose.position.z =
+                std::max(
+                    pose.pose.position.z,
+                    MIN_Z_HEIGHT);
+
+            nav = NavPose(pose, 0.3); // Offset de 0.3m para navegación
+
+            return true;
+        }
+
+        RCLCPP_WARN(
+            node_->get_logger(),
+            "Failed to compute pose from bbox for '%s'; trying next OWL detection",
+            det.class_name.c_str());
+    }
+
+    RCLCPP_WARN(
+        node_->get_logger(),
+        "Failed to compute pose from all OWL detections for '%s'",
+        object_name.c_str());
+
+    return false;
+}
+
+bool Vision::DetectionToNavPose(
+    const YoloDetection& detection,
+    geometry_msgs::msg::PoseStamped& pose,
+    geometry_msgs::msg::PoseStamped& nav,
+    const rclcpp::Time& detection_stamp, 
+    std::chrono::seconds timeout)
+{
+    if (!bbox_to_pose_client_->wait_for_service(1s))
+    {
+        RCLCPP_ERROR(
+            node_->get_logger(),
+            "BboxToPose service not available");
+
+        return false;
+    }
+
     auto request =
         std::make_shared<
             vision_interfaces::srv::BboxToPose::Request>();
 
     request->header.stamp = node_->now();
-
     request->header.frame_id =
         "head_front_camera_rgb_optical_frame";
 
-    // OWL bbox
-    request->x1 =
-    static_cast<int32_t>(det.x_min);
-
-	request->y1 =
-		static_cast<int32_t>(det.y_min);
-
-	request->x2 =
-		static_cast<int32_t>(det.x_max);
-
-	request->y2 =
-		static_cast<int32_t>(det.y_max);
+    request->x1 = static_cast<int32_t>(detection.x_min);
+    request->y1 = static_cast<int32_t>(detection.y_min);
+    request->x2 = static_cast<int32_t>(detection.x_max);
+    request->y2 = static_cast<int32_t>(detection.y_max);
 
     bool success = false;
 
@@ -389,10 +601,9 @@ bool Vision::GetOwlPose(
                 if (success)
                 {
                     pose = response->pose;
-
                     RCLCPP_INFO(
                         node_->get_logger(),
-                        "BboxToPose OK "
+                        "DetectionToNavPose OK "
                         "pos=[%.3f %.3f %.3f] "
                         "quat=[%.3f %.3f %.3f %.3f]",
                         pose.pose.position.x,
@@ -411,18 +622,31 @@ bool Vision::GetOwlPose(
     {
         RCLCPP_WARN(
             node_->get_logger(),
-            "Failed to compute pose from bbox");
+            "Failed to compute pose from AnalyzePerson detection bbox");
 
         return false;
     }
 
-    // Clamp mínimo de altura
     pose.pose.position.z =
         std::max(
             pose.pose.position.z,
             MIN_Z_HEIGHT);
 
+    nav = NavPose(pose, 0.3);
+
     return true;
+}
+
+bool Vision::DetectionToNavPose(
+    const YoloDetection& detection,
+    geometry_msgs::msg::PoseStamped& pose,
+    geometry_msgs::msg::PoseStamped& nav,
+    std::chrono::seconds timeout)
+{
+    RCLCPP_WARN(node_->get_logger(),
+                "DetectionToNavPose: using node_->now() as stamp fallback "
+                "(no real capture timestamp available yet for this source)");
+    return DetectionToNavPose(detection, pose, nav, node_->now(), timeout);
 }
 
 // ── FindSeat ─────────────────────────────────────────────────────────────────
@@ -502,10 +726,11 @@ Vision::PointingResult Vision::DetectPointing(std::chrono::seconds timeout)
 
 // ── GetTableAlignment ────────────────────────────────────────────────────────
 
-double Vision::GetTableAlignment(std::chrono::seconds timeout)
+double Vision::GetTableAlignment(bool is_round, std::chrono::seconds timeout)
 {
   auto request =
       std::make_shared<vision_interfaces::srv::GetTableAlignment::Request>();
+  request->is_round = is_round;
 
   double angle = 0.0;
   bool success = false;
@@ -552,6 +777,159 @@ bool Vision::Focus(bool enable, std::chrono::seconds timeout)
                     success ? "OK" : "FAILED");
       },
       timeout, "Focus");
+
+  return completed && success;
+}
+
+// ── Analyze count ────────────────────────────────────────────────────────────
+
+bool Vision::AnalyzeCount(const std::string &target_class, bool reset_count,
+                          int32_t &out_current_count, int32_t &out_class_count, int32_t &out_total_cumulative,
+                          std::chrono::seconds timeout)
+{
+  auto request = std::make_shared<vision_interfaces::srv::GetAnalytics::Request>();
+  request->action = "count";
+  request->target_class = target_class;
+  request->reset_count = reset_count;
+
+  bool success = false;
+  bool completed = call_service<vision_interfaces::srv::GetAnalytics>(
+      count_analize_client_, request,
+      [&](vision_interfaces::srv::GetAnalytics::Response::SharedPtr response) {
+        success = response->success;
+        if (success) {
+          out_current_count = response->current_count;
+          out_class_count   = response->class_count;
+          out_total_cumulative = response->total_cumulative;
+        }
+        RCLCPP_INFO(node_->get_logger(), "AnalyzeCount [%s] %s: %s",
+                    target_class.c_str(), success ? "OK" : "FAILED", response->message.c_str());
+      },
+      timeout, "AnalyzeCount");
+
+  return completed && success;
+}
+
+// ── Analyze Size ─────────────────────────────────────────────────────────────
+
+bool Vision::AnalyzeSize(const std::string &target_class, const std::string &filter_mode, int32_t count_limit,
+                         vision_interfaces::msg::YoloDetection &out_best_match,
+                         std::vector<vision_interfaces::msg::YoloDetection> &out_detections,
+                         std::chrono::seconds timeout)
+{
+  auto request = std::make_shared<vision_interfaces::srv::GetAnalytics::Request>();
+  request->action = "get_by_size";
+  request->target_class = target_class;
+  request->filter_mode = filter_mode; // "big" | "small" | "mixed"
+  request->count_limit = count_limit;
+
+  bool success = false;
+  bool completed = call_service<vision_interfaces::srv::GetAnalytics>(
+      size_analize_client_, request,
+      [&](vision_interfaces::srv::GetAnalytics::Response::SharedPtr response) {
+        success = response->success;
+        if (success && response->has_best_match) {
+          out_best_match = response->best_match;
+          out_detections = response->detections;
+        }
+        RCLCPP_INFO(node_->get_logger(), "AnalyzeSize [%s - %s] %s: %s",
+                    target_class.c_str(), filter_mode.c_str(), success ? "OK" : "FAILED", response->message.c_str());
+      },
+      timeout, "AnalyzeSize");
+
+  return completed && success;
+}
+
+// ── Analyze Color ────────────────────────────────────────────────────────────
+
+bool Vision::AnalyzeColor(const std::string &target_class, const std::string &color,
+                          vision_interfaces::msg::YoloDetection &out_best_match,
+                          std::chrono::seconds timeout)
+{
+  auto request = std::make_shared<vision_interfaces::srv::GetAnalytics::Request>();
+  request->action = "get_by_color";
+  request->target_class = target_class;
+  request->color = color;
+
+  bool success = false;
+  bool completed = call_service<vision_interfaces::srv::GetAnalytics>(
+      color_analize_client_, request,
+      [&](vision_interfaces::srv::GetAnalytics::Response::SharedPtr response) {
+        success = response->success;
+        if (success && response->has_best_match) {
+          out_best_match = response->best_match;
+        }
+        RCLCPP_INFO(node_->get_logger(), "AnalyzeColor [%s - %s] %s: %s",
+                    target_class.c_str(), color.c_str(), success ? "OK" : "FAILED", response->message.c_str());
+      },
+      timeout, "AnalyzeColor");
+
+  return completed && success;
+}
+
+// ── Analyze Compare ──────────────────────────────────────────────────────────
+
+bool Vision::AnalyzeCompare(const std::vector<std::string> &compare_classes,
+                            std::string &out_winner_class,
+                            std::chrono::seconds timeout)
+{
+  auto request = std::make_shared<vision_interfaces::srv::GetAnalytics::Request>();
+  request->action = "compare_count";
+  request->compare_classes = compare_classes;
+
+  bool success = false;
+  bool completed = call_service<vision_interfaces::srv::GetAnalytics>(
+      compare_analize_client_, request,
+      [&](vision_interfaces::srv::GetAnalytics::Response::SharedPtr response) {
+        success = response->success;
+        if (success) {
+          out_winner_class = response->winner_class;
+        }
+        RCLCPP_INFO(node_->get_logger(), "AnalyzeCompare %s: %s",
+                    success ? "OK" : "FAILED", response->message.c_str());
+      },
+      timeout, "AnalyzeCompare");
+
+  return completed && success;
+}
+
+// ── Analyze Person ──────────────────────────────────────────────────────────
+
+bool Vision::AnalyzePerson(const std::string &action, const std::string &color,
+                           const std::string &attribute,
+                           const std::string &gesture_type,
+                           const std::string &arm_side,
+                           std::string &out_message,
+                           std::vector<vision_interfaces::msg::YoloDetection>
+                               &out_detections,
+                           bool &out_has_point,
+                           geometry_msgs::msg::PointStamped &out_point,
+                           std::chrono::seconds timeout) {
+  auto request =
+      std::make_shared<vision_interfaces::srv::AnalyzePerson::Request>();
+  request->action = action;
+  request->color = color;
+  request->attribute = attribute;
+  request->gesture_type = gesture_type;
+  request->arm_side = arm_side.empty() ? "any" : arm_side;
+
+  bool success = false;
+  out_has_point = false;
+  out_point = geometry_msgs::msg::PointStamped{};
+
+  bool completed = call_service<vision_interfaces::srv::AnalyzePerson>(
+      analyze_person_client_, request,
+      [&](vision_interfaces::srv::AnalyzePerson::Response::SharedPtr response) {
+        success = response->success;
+        out_message = response->message;
+        out_detections = response->detections;
+        out_has_point = response->has_point;
+        out_point = response->point;
+        RCLCPP_INFO(node_->get_logger(), "AnalyzePerson [%s] %s: %s",
+                    action.c_str(), success ? "OK" : "FAILED",
+                    response->message.c_str());
+      },
+      timeout, "AnalyzePerson");
 
   return completed && success;
 }
