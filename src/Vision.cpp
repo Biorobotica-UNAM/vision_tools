@@ -435,12 +435,14 @@ Vision::DetectOwlV2(const std::vector<std::string> &queries,
   request->queries = queries;
 
   std::pair<bool, std::vector<Vision::YoloDetection>> result{false, {}};
+  last_owl_header_ = std_msgs::msg::Header{};  // reset por si esta llamada falla
 
   bool completed = call_service<vision_interfaces::srv::GetDetections>(
       owl_v2_client_, request,
       [&](vision_interfaces::srv::GetDetections::Response::SharedPtr response) {
         result.first  = response->success;
         result.second = response->detections;
+        last_owl_header_ = response->header;   // ← stamp real del frame de captura
         RCLCPP_INFO(node_->get_logger(),
                     "DetectOwlV2 %s: %zu detection(s). %s",
                     result.first ? "OK" : "FAILED",
@@ -467,11 +469,6 @@ bool Vision::GetOwlPose(
     if (!result.first || result.second.empty())
         return false;
 
-    // Tomar mejor detección
-    const auto& det = result.second[0];
-
-    detected_name = det.class_name;
-
     // Verificar servicio
     if (!bbox_to_pose_client_->wait_for_service(1s))
     {
@@ -482,84 +479,91 @@ bool Vision::GetOwlPose(
         return false;
     }
 
-    // Crear request
-    auto request =
-        std::make_shared<
-            vision_interfaces::srv::BboxToPose::Request>();
-
-    request->header.stamp = node_->now();
-
-    request->header.frame_id =
-        "head_front_camera_rgb_optical_frame";
-
-    // OWL bbox
-    request->x1 =
-    static_cast<int32_t>(det.x_min);
-
-	request->y1 =
-		static_cast<int32_t>(det.y_min);
-
-	request->x2 =
-		static_cast<int32_t>(det.x_max);
-
-	request->y2 =
-		static_cast<int32_t>(det.y_max);
-
-    bool success = false;
-
-    bool completed =
-        call_service<vision_interfaces::srv::BboxToPose>(
-            bbox_to_pose_client_,
-            request,
-            [&](vision_interfaces::srv::BboxToPose::Response::SharedPtr response)
-            {
-                success = response->success;
-
-                if (success)
-                {
-                    pose = response->pose;
-
-                    RCLCPP_INFO(
-                        node_->get_logger(),
-                        "BboxToPose OK "
-                        "pos=[%.3f %.3f %.3f] "
-                        "quat=[%.3f %.3f %.3f %.3f]",
-                        pose.pose.position.x,
-                        pose.pose.position.y,
-                        pose.pose.position.z,
-                        pose.pose.orientation.x,
-                        pose.pose.orientation.y,
-                        pose.pose.orientation.z,
-                        pose.pose.orientation.w);
-                }
-            },
-            timeout,
-            "BboxToPose");
-
-    if (!completed || !success)
+    for (const auto& det : result.second)
     {
+        auto request =
+            std::make_shared<
+                vision_interfaces::srv::BboxToPose::Request>();
+
+        request->header.stamp = last_owl_header_.stamp;
+        request->header.frame_id =
+            "head_front_camera_rgb_optical_frame";
+
+        request->x1 = static_cast<int32_t>(det.x_min);
+        request->y1 = static_cast<int32_t>(det.y_min);
+        request->x2 = static_cast<int32_t>(det.x_max);
+        request->y2 = static_cast<int32_t>(det.y_max);
+
+        bool success = false;
+
+        bool completed =
+            call_service<vision_interfaces::srv::BboxToPose>(
+                bbox_to_pose_client_,
+                request,
+                [&](vision_interfaces::srv::BboxToPose::Response::SharedPtr response)
+                {
+                    success = response->success;
+
+                    if (success)
+                    {
+                        pose = response->pose;
+
+                        RCLCPP_INFO(
+                            node_->get_logger(),
+                            "BboxToPose OK for '%s' "
+                            "pos=[%.3f %.3f %.3f] "
+                            "quat=[%.3f %.3f %.3f %.3f]",
+                            det.class_name.c_str(),
+                            pose.pose.position.x,
+                            pose.pose.position.y,
+                            pose.pose.position.z,
+                            pose.pose.orientation.x,
+                            pose.pose.orientation.y,
+                            pose.pose.orientation.z,
+                            pose.pose.orientation.w);
+                    }
+                },
+                timeout,
+                "BboxToPose");
+
+        if (!completed)
+        {
+            return false;
+        }
+
+        if (success)
+        {
+            detected_name = det.class_name;
+
+            pose.pose.position.z =
+                std::max(
+                    pose.pose.position.z,
+                    MIN_Z_HEIGHT);
+
+            nav = NavPose(pose, 0.3); // Offset de 0.3m para navegación
+
+            return true;
+        }
+
         RCLCPP_WARN(
             node_->get_logger(),
-            "Failed to compute pose from bbox");
-
-        return false;
+            "Failed to compute pose from bbox for '%s'; trying next OWL detection",
+            det.class_name.c_str());
     }
 
-    // Clamp mínimo de altura
-    pose.pose.position.z =
-        std::max(
-            pose.pose.position.z,
-            MIN_Z_HEIGHT);
+    RCLCPP_WARN(
+        node_->get_logger(),
+        "Failed to compute pose from all OWL detections for '%s'",
+        object_name.c_str());
 
-    nav = NavPose(pose, 0.3); // Offset de 0.3m para navegación
-
-    return true;
+    return false;
 }
 
 bool Vision::DetectionToNavPose(
     const YoloDetection& detection,
     geometry_msgs::msg::PoseStamped& pose,
     geometry_msgs::msg::PoseStamped& nav,
+    const rclcpp::Time& detection_stamp, 
     std::chrono::seconds timeout)
 {
     if (!bbox_to_pose_client_->wait_for_service(1s))
@@ -631,6 +635,18 @@ bool Vision::DetectionToNavPose(
     nav = NavPose(pose, 0.3);
 
     return true;
+}
+
+bool Vision::DetectionToNavPose(
+    const YoloDetection& detection,
+    geometry_msgs::msg::PoseStamped& pose,
+    geometry_msgs::msg::PoseStamped& nav,
+    std::chrono::seconds timeout)
+{
+    RCLCPP_WARN(node_->get_logger(),
+                "DetectionToNavPose: using node_->now() as stamp fallback "
+                "(no real capture timestamp available yet for this source)");
+    return DetectionToNavPose(detection, pose, nav, node_->now(), timeout);
 }
 
 // ── FindSeat ─────────────────────────────────────────────────────────────────

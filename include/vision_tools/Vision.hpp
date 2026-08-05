@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "std_msgs/msg/header.hpp"
 #include "faces_interfaces/srv/face_recog.hpp"
 #include "geometry_msgs/msg/point_stamped.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
@@ -129,6 +130,13 @@ public:
     const YoloDetection& detection,
     geometry_msgs::msg::PoseStamped& pose,
     geometry_msgs::msg::PoseStamped& nav,
+    const rclcpp::Time& detection_stamp,
+    std::chrono::seconds timeout = 5s);
+
+  bool DetectionToNavPose(
+    const YoloDetection& detection,
+    geometry_msgs::msg::PoseStamped& pose,
+    geometry_msgs::msg::PoseStamped& nav,
     std::chrono::seconds timeout = 5s);
 
   static constexpr double MIN_Z_HEIGHT      = 0.5;
@@ -144,6 +152,7 @@ public:
 private:
   rclcpp::Node::SharedPtr node_;
   rclcpp::CallbackGroup::SharedPtr cb_group_clients_;
+  std_msgs::msg::Header last_owl_header_;
 
   rclcpp::Client<vision_interfaces::srv::DetectByClass>::SharedPtr detect_by_class_client_;
   rclcpp::Client<vision_interfaces::srv::GetDetections>::SharedPtr owl_v2_client_;

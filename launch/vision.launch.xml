@@ -288,6 +288,6 @@
       name="image_fixed_node"
       namespace="$(var namespace_vision)"
       output="screen">
-    </node>
+    </node> 
 
 </launch>
