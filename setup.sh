@@ -28,7 +28,7 @@ curl -L https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sf
 curl -L https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11m.pt \
 -o "$MODELS_DIR/yolo11m.pt"
 
-pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu121 --break-system-packages
 
 echo "--- VERIFICACIÓN ---"
 # Listar los archivos y mostrar su tamaño para confirmar que no son 0 KB
