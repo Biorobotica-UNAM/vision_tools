@@ -428,11 +428,14 @@ bool Vision::RegisterPerson(const std::string &name,
 
 std::pair<bool, std::vector<Vision::YoloDetection>>
 Vision::DetectOwlV2(const std::vector<std::string> &queries,
-                    std::chrono::seconds timeout)
+                    std::chrono::seconds timeout,
+                    std_msgs::msg::Header *image_header)
 {
   auto request =
       std::make_shared<vision_interfaces::srv::GetDetections::Request>();
   request->queries = queries;
+  if (image_header)
+    *image_header = std_msgs::msg::Header{};
 
   std::pair<bool, std::vector<Vision::YoloDetection>> result{false, {}};
 
@@ -441,6 +444,8 @@ Vision::DetectOwlV2(const std::vector<std::string> &queries,
       [&](vision_interfaces::srv::GetDetections::Response::SharedPtr response) {
         result.first  = response->success;
         result.second = response->detections;
+        if (image_header)
+          *image_header = response->header;
         RCLCPP_INFO(node_->get_logger(),
                     "DetectOwlV2 %s: %zu detection(s). %s",
                     result.first ? "OK" : "FAILED",
@@ -462,10 +467,20 @@ bool Vision::GetOwlPose(
     std::string& detected_name,
     std::chrono::seconds timeout)
 {
-    auto result = DetectOwlV2({object_name}, timeout);
+    std_msgs::msg::Header image_header;
+    auto result = DetectOwlV2({object_name}, timeout, &image_header);
 
     if (!result.first || result.second.empty())
         return false;
+
+    if (image_header.frame_id.empty() ||
+        image_header.stamp.sec < 0 ||
+        (image_header.stamp.sec == 0 && image_header.stamp.nanosec == 0))
+    {
+        RCLCPP_ERROR(node_->get_logger(),
+                     "OWL detection has no valid source image header");
+        return false;
+    }
 
     // Tomar mejor detección
     const auto& det = result.second[0];
@@ -487,10 +502,8 @@ bool Vision::GetOwlPose(
         std::make_shared<
             vision_interfaces::srv::BboxToPose::Request>();
 
-    request->header.stamp = node_->now();
-
-    request->header.frame_id =
-        "head_front_camera_rgb_optical_frame";
+    // Match depth to the RGB observation, not to service invocation time.
+    request->header = image_header;
 
     // OWL bbox
     request->x1 =

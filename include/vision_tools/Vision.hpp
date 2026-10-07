@@ -1,5 +1,7 @@
 #pragma once
 
+#include <std_msgs/msg/header.hpp>
+
 /**
  * @brief Facade over ROS2 Vision services.
  * BioRobotics Laboratory, Facultad de Ingenieria, UNAM
@@ -45,7 +47,8 @@ public:
 
   std::pair<bool, std::vector<YoloDetection>>
   DetectOwlV2(const std::vector<std::string> &queries,
-              std::chrono::seconds timeout = 10s);
+              std::chrono::seconds timeout = 10s,
+              std_msgs::msg::Header *image_header = nullptr);
 
   std::pair<bool, geometry_msgs::msg::PointStamped>
   FindSeat(std::chrono::seconds timeout = 10s);

@@ -3,7 +3,7 @@
 
     <arg name="namespace_vision"   default="vision"/>
     <arg name="model_name"         default="yolo11m.pt"/>
-    <arg name="image_topic"        default="/hardware/camera/image_raw"/>  <!--/hardware/camera/image_raw && /kinect/image_raw-->
+    <arg name="image_topic"        default="/camera/rgb/image_raw"/>  <!--/hardware/camera/image_raw && /kinect/image_raw-->
     <arg name="pointcloud_topic"   default="/hardware/camera/points"/>  <!--/hardware/camera/points && /kinect/points--> 
     <arg name="vacancy_filtered_cloud_topic" default="/$(var namespace_vision)/vacancy/points_filtered"/>
 

@@ -32,6 +32,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 )
 
 ament_target_dependencies(${PROJECT_NAME}
+  std_msgs
   rclcpp
   geometry_msgs
   vision_interfaces
@@ -115,6 +116,7 @@ install(DIRECTORY include/ DESTINATION include)
 # 5. Exportación
 ament_export_targets(export_${PROJECT_NAME})
 ament_export_dependencies(
+  std_msgs
   rclcpp
   geometry_msgs
   vision_interfaces
