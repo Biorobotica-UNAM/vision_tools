@@ -292,10 +292,11 @@ bool Vision::DetectPersonPose(
 
   request->header.frame_id = "head_front_camera_rgb_optical_frame";
 
+  const int32_t face_h = std::max<int32_t>(0, y2 - y1);
   request->x1 = x1;
   request->y1 = y1;
   request->x2 = x2;
-  request->y2 = y2;
+  request->y2 = std::min<int32_t>(479, y2 + static_cast<int32_t>(face_h * 0.6));
 
   int attempt = 0;
 
@@ -329,7 +330,7 @@ bool Vision::DetectPersonPose(
       out_detection.z       = z;
       out_detection.pose    = pose;
 
-      out_detection.nav     = NavPose(pose, 0.5); // Offset de 0.5m para navegación
+      out_detection.nav     = NavPose(pose, 0.70); // Offset de 0.70m para quedar a ~70-80cm frente a la persona
 
       return true;
     }
