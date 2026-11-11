@@ -92,6 +92,18 @@ Vision::Vision(const rclcpp::Node::SharedPtr &node) : node_(node)
   analyze_person_client_ =
       node_->create_client<vision_interfaces::srv::AnalyzePerson>(
           "/vision/analyze_person", qos, cb_group_clients_);
+
+  if (!node_->has_parameter("approach.person_distance_m")) {
+    node_->declare_parameter<double>("approach.person_distance_m", DEFAULT_PERSON_DISTANCE_M);
+  }
+}
+
+double Vision::getPersonDistanceM() const
+{
+  if (node_ && node_->has_parameter("approach.person_distance_m")) {
+    return node_->get_parameter("approach.person_distance_m").as_double();
+  }
+  return DEFAULT_PERSON_DISTANCE_M;
 }
 
 // helper para navegacion-------------------------------------------------------
@@ -330,7 +342,7 @@ bool Vision::DetectPersonPose(
       out_detection.z       = z;
       out_detection.pose    = pose;
 
-      out_detection.nav     = NavPose(pose, 0.70); // Offset de 0.70m para quedar a ~70-80cm frente a la persona
+      out_detection.nav     = NavPose(pose, getPersonDistanceM()); // Offset configurable via approach.person_distance_m (default 0.80m)
 
       return true;
     }
@@ -565,7 +577,8 @@ bool Vision::DetectionToNavPose(
     geometry_msgs::msg::PoseStamped& pose,
     geometry_msgs::msg::PoseStamped& nav,
     const rclcpp::Time& detection_stamp, 
-    std::chrono::seconds timeout)
+    std::chrono::seconds timeout,
+    double nav_offset_m)
 {
     if (!bbox_to_pose_client_->wait_for_service(1s))
     {
@@ -633,7 +646,7 @@ bool Vision::DetectionToNavPose(
             pose.pose.position.z,
             MIN_Z_HEIGHT);
 
-    nav = NavPose(pose, 0.3);
+    nav = NavPose(pose, nav_offset_m);
 
     return true;
 }
@@ -642,12 +655,13 @@ bool Vision::DetectionToNavPose(
     const YoloDetection& detection,
     geometry_msgs::msg::PoseStamped& pose,
     geometry_msgs::msg::PoseStamped& nav,
-    std::chrono::seconds timeout)
+    std::chrono::seconds timeout,
+    double nav_offset_m)
 {
     RCLCPP_WARN(node_->get_logger(),
                 "DetectionToNavPose: using node_->now() as stamp fallback "
                 "(no real capture timestamp available yet for this source)");
-    return DetectionToNavPose(detection, pose, nav, node_->now(), timeout);
+    return DetectionToNavPose(detection, pose, nav, node_->now(), timeout, nav_offset_m);
 }
 
 // ── FindSeat ─────────────────────────────────────────────────────────────────

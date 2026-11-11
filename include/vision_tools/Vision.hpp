@@ -131,15 +131,18 @@ public:
     geometry_msgs::msg::PoseStamped& pose,
     geometry_msgs::msg::PoseStamped& nav,
     const rclcpp::Time& detection_stamp,
-    std::chrono::seconds timeout = 5s);
+    std::chrono::seconds timeout = 5s,
+    double nav_offset_m = 0.3);
 
   bool DetectionToNavPose(
     const YoloDetection& detection,
     geometry_msgs::msg::PoseStamped& pose,
     geometry_msgs::msg::PoseStamped& nav,
-    std::chrono::seconds timeout = 5s);
+    std::chrono::seconds timeout = 5s,
+    double nav_offset_m = 0.3);
 
   static constexpr double MIN_Z_HEIGHT      = 0.5;
+  static constexpr double DEFAULT_PERSON_DISTANCE_M = 0.80;
 
   double GetTableAlignment(bool is_round = false, std::chrono::seconds timeout = 1s);
 
@@ -171,6 +174,8 @@ private:
   rclcpp::Client<vision_interfaces::srv::GetAnalytics>::SharedPtr color_analize_client_;
   rclcpp::Client<vision_interfaces::srv::GetAnalytics>::SharedPtr compare_analize_client_;
   rclcpp::Client<vision_interfaces::srv::AnalyzePerson>::SharedPtr analyze_person_client_;
+
+  double getPersonDistanceM() const;
 
   template <typename ServiceT, typename CallbackT>
   bool call_service(
